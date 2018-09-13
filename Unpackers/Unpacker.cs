@@ -1,13 +1,14 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace MediaEngine.Unpackers
 {
-    abstract class Unpacker
+    abstract class Unpacker<T> where T : Enum
     {
-        protected readonly Dictionary<byte, int> _fieldValues = new Dictionary<byte, int>();
+        protected readonly Dictionary<T, int> _fieldValues = new Dictionary<T, int>();
 
-        protected abstract void Unpack(BinaryReader source, BinaryWriter destination, byte fieldId);
+        protected abstract void Unpack(BinaryReader source, BinaryWriter destination, T field);
 
         public void Unpack(BinaryReader source, BinaryWriter destination)
         {
@@ -16,14 +17,16 @@ namespace MediaEngine.Unpackers
 
             while (true)
             {
-                var fieldId = source.ReadByte();
-                if (fieldId == 255)
+                var fieldByte = source.ReadByte();
+                var field = (T)Enum.ToObject(typeof(T), fieldByte);
+
+                if (fieldByte == 255)
                 {
-                    _fieldValues.Add(fieldId, source.ReadByte());
+                    _fieldValues.Add(field, source.ReadByte());
                     return;
                 }
 
-                Unpack(source, destination, fieldId);
+                Unpack(source, destination, field);
             }
         }
     }

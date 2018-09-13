@@ -3,17 +3,22 @@ using System.IO;
 
 namespace MediaEngine.Unpackers
 {
-    class MidiUnpacker : Unpacker
+    enum MidiField
     {
-        protected override void Unpack(BinaryReader source, BinaryWriter destination, byte fieldId)
+        MidiData = 32
+    }
+
+    class MidiUnpacker : Unpacker<MidiField>
+    {
+        protected override void Unpack(BinaryReader source, BinaryWriter destination, MidiField field)
         {
-            switch (fieldId)
+            switch (field)
             {
                 default:
-                    _fieldValues[fieldId] = source.ReadInt32();
+                    _fieldValues[field] = source.ReadInt32();
                     break;
 
-                case 32:
+                case MidiField.MidiData:
                     ushort chunks = 2;
                     for (int i = 0; i <= chunks; i++)
                     {

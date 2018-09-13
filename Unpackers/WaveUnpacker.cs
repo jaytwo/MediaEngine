@@ -3,16 +3,22 @@ using System.Text;
 
 namespace MediaEngine.Unpackers
 {
-    class WaveUnpacker : Unpacker
+    enum WaveField
+    {
+        RiffData = 16,
+        UnknownByte = 131
+    }
+
+    class WaveUnpacker : Unpacker<WaveField>
     {
         private const int WAVE_FORMAT_PCM = 0x0001;
         private const int WAVE_FORMAT_DVI_ADPCM = 0x0011;
 
-        protected override void Unpack(BinaryReader source, BinaryWriter destination, byte fieldId)
+        protected override void Unpack(BinaryReader source, BinaryWriter destination, WaveField field)
         {
-            switch (fieldId)
+            switch (field)
             {
-                case 16:
+                case WaveField.RiffData:
                     var unknown1 = source.ReadBytes(6);
                     var format = source.ReadUInt16();
                     var channels = source.ReadUInt16();
@@ -53,12 +59,12 @@ namespace MediaEngine.Unpackers
                     destination.Write(source.ReadBytes(dataLength));
                     break;
 
-                case 131:
-                    _fieldValues.Add(fieldId, source.ReadByte());
+                case WaveField.UnknownByte:
+                    _fieldValues.Add(field, source.ReadByte());
                     break;
 
                 default:
-                    _fieldValues.Add(fieldId, source.ReadInt32());
+                    _fieldValues.Add(field, source.ReadInt32());
                     break;
             }
         }
