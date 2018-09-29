@@ -10,6 +10,8 @@ namespace MediaEngine.Unpackers
 
         protected abstract void Unpack(BinaryReader source, BinaryWriter destination, T field);
 
+        protected virtual void OnFinish(BinaryWriter destination) { }
+
         public void Unpack(BinaryReader source, BinaryWriter destination)
         {
             _fieldValues.Clear();
@@ -23,6 +25,7 @@ namespace MediaEngine.Unpackers
                 if (fieldByte == 255)
                 {
                     _fieldValues.Add(field, source.ReadByte());
+                    OnFinish(destination);
                     return;
                 }
 

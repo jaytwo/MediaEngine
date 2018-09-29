@@ -9,7 +9,7 @@ namespace MediaEngine.Unpackers
     enum ModelField
     {
         VertexCount = 16,
-        UnknownLength17 = 17,
+        FaceCount = 17,
         IndexCount = 18,
         UnknownMarker19 = 19,
         UnknownArray22 = 22,
@@ -17,7 +17,7 @@ namespace MediaEngine.Unpackers
         FacesDouble = 33,
         UnknownMarker34 = 34,
         FacesSingle = 35,
-        UnknownArray36 = 36,
+        MaterialList = 36,
         UnknownArray113 = 113,
         UnknownArray115 = 115,
         UnknownArray144 = 144,
@@ -75,28 +75,39 @@ namespace MediaEngine.Unpackers
                         switch (source.ReadByte())
                         {
                             case 34:
-                                source.ReadBytes(2 * _fieldValues[ModelField.UnknownLength17]);
-                                break;
-
-                            case 36:
-                                var bitsPerItem = source.ReadByte();
-                                var byteCount = _fieldValues[ModelField.UnknownLength17] * bitsPerItem / 32.0;
-                                source.ReadBytes((int)Math.Ceiling(byteCount));
+                                var unknown34 = Enumerable.Range(0, _fieldValues[ModelField.FaceCount])
+                                    .Select(i => source.ReadInt16())
+                                    .ToArray();
                                 break;
 
                             default:
-                                throw new NotImplementedException();
+                                source.BaseStream.Position--;
+                                break;
                         }
 
                     break;
 
-                case ModelField.UnknownArray36:
-                    _fieldValues[field] = source.ReadInt16();
-                    
-                    while (source.ReadByte() != 150)
-                    { }
+                case ModelField.MaterialList:
+                    var bitsPerItem = source.ReadByte();
+                    var byteCount = _fieldValues[ModelField.FaceCount] * bitsPerItem / 32.0;
+                    var materialList = source.ReadBytes((int)Math.Ceiling(byteCount));
+                    if (bitsPerItem == 16)
+                        materialList = materialList.SelectMany(b => new[]
+                        {
+                            (byte)((b & 0xF0) >> 4),
+                            (byte)(b & 0x0F)
+                        })
+                        .ToArray();
 
-                    source.BaseStream.Position--;
+                    if (byteCount != Math.Ceiling(byteCount))
+                        materialList = materialList.Take(materialList.Length - 1).ToArray();
+
+                    destination.Write(Encoding.ASCII.GetBytes(
+                        "MeshMaterialList {" + Environment.NewLine +
+                        materialList.Max() + "; // number of materials" + Environment.NewLine +
+                        materialList.Length + "; // material for each face" + Environment.NewLine +
+                        string.Join("," + Environment.NewLine, materialList) + ";;" + Environment.NewLine));
+                    
                     break;
 
                 case ModelField.UnknownArray113:
@@ -111,7 +122,17 @@ namespace MediaEngine.Unpackers
                 case ModelField.UnknownArray145:
                 case ModelField.UnknownArray146:
                 case ModelField.UnknownArray147:
-                    source.ReadBytes(16);
+                    var rgba = Enumerable.Range(0, 4)
+                        .Select(i => source.ReadSingle())
+                        .ToArray();
+
+                    if (field == ModelField.UnknownArray145)
+                        destination.Write(Encoding.ASCII.GetBytes(
+                            "Material {" + Environment.NewLine +
+                            string.Join(";", rgba) + ";;" + Environment.NewLine +
+                            "0.000000;0.000000;0.000000;0.000000;;" + Environment.NewLine +
+                            "0.000000;0.000000;0.000000;;" + Environment.NewLine +
+                            "}" + Environment.NewLine));
                     break;
 
                 case ModelField.UnknownShort149:
@@ -142,7 +163,13 @@ namespace MediaEngine.Unpackers
 
             return Encoding.ASCII.GetBytes(faces.Count + "; // faces" + Environment.NewLine +
                 string.Join("," + Environment.NewLine, faces) +
-                ";" + Environment.NewLine + "}" + Environment.NewLine);
+                ";" + Environment.NewLine);
+        }
+
+        protected override void OnFinish(BinaryWriter destination)
+        {
+            destination.Write('}');
+            destination.Write('}');
         }
     }
 }
