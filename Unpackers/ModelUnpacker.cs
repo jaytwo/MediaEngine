@@ -20,14 +20,14 @@ namespace MediaEngine.Unpackers
         MaterialList = 36,
         UnknownArray113 = 113,
         UnknownArray115 = 115,
-        UnknownArray144 = 144,
-        UnknownArray145 = 145,
-        UnknownArray146 = 146,
-        UnknownArray147 = 147,
+        MaterialPower = 144,
+        MaterialAmbient = 145,
+        MaterialEmissive = 146,
+        MaterialSpecular = 147,
         UnknownShort149 = 149,
         UnknownShort150 = 150,
         UnknownShort151 = 151,
-        UnknownString177 = 177,
+        MaterialName = 177,
     }
 
     /// <summary>
@@ -35,6 +35,8 @@ namespace MediaEngine.Unpackers
     /// </summary>
     class ModelUnpacker : Unpacker<ModelField>
     {
+        private readonly Dictionary<ModelField, float[]> _material = new Dictionary<ModelField, float[]>();
+
         protected override void Unpack(BinaryReader source, BinaryWriter destination, ModelField field)
         {
             switch (field)
@@ -104,7 +106,7 @@ namespace MediaEngine.Unpackers
 
                     destination.Write(Encoding.ASCII.GetBytes(
                         "MeshMaterialList {" + Environment.NewLine +
-                        materialList.Max() + "; // number of materials" + Environment.NewLine +
+                        (1 + materialList.Max()) + "; // number of materials" + Environment.NewLine +
                         materialList.Length + "; // material for each face" + Environment.NewLine +
                         string.Join("," + Environment.NewLine, materialList) + ";;" + Environment.NewLine));
                     
@@ -115,24 +117,20 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ModelField.UnknownArray115:
-                    source.ReadBytes(24);
+                    var unknown24 = Enumerable.Range(0, 6)
+                        .Select(i => source.ReadUInt32())
+                        .Where(i => i != uint.MaxValue)
+                        .ToArray();
                     break;
 
-                case ModelField.UnknownArray144:
-                case ModelField.UnknownArray145:
-                case ModelField.UnknownArray146:
-                case ModelField.UnknownArray147:
-                    var rgba = Enumerable.Range(0, 4)
+                case ModelField.MaterialPower:
+                case ModelField.MaterialAmbient:
+                case ModelField.MaterialEmissive:
+                case ModelField.MaterialSpecular:
+                    _material[field] = Enumerable.Range(0, 4)
                         .Select(i => source.ReadSingle())
                         .ToArray();
-
-                    if (field == ModelField.UnknownArray145)
-                        destination.Write(Encoding.ASCII.GetBytes(
-                            "Material {" + Environment.NewLine +
-                            string.Join(";", rgba) + ";;" + Environment.NewLine +
-                            "0.000000;0.000000;0.000000;0.000000;;" + Environment.NewLine +
-                            "0.000000;0.000000;0.000000;;" + Environment.NewLine +
-                            "}" + Environment.NewLine));
+                    _material[field][3] = 1;
                     break;
 
                 case ModelField.UnknownShort149:
@@ -141,9 +139,15 @@ namespace MediaEngine.Unpackers
                     _fieldValues[field] = source.ReadInt16();
                     break;
 
-                case ModelField.UnknownString177:
-                    var unknownLength = source.ReadInt32();
-                    var unknownString = Encoding.GetEncoding(932).GetString(source.ReadBytes(unknownLength));
+                case ModelField.MaterialName:
+                    var name = Encoding.GetEncoding(932).GetString(source.ReadBytes(source.ReadInt32()));
+                    destination.Write(Encoding.UTF8.GetBytes(
+                            "Material " + name + " {" + Environment.NewLine +
+                            string.Join(";", _material[ModelField.MaterialAmbient]) + ";;" + Environment.NewLine +
+                            _material[ModelField.MaterialPower][0] + ";" + Environment.NewLine +
+                            string.Join(";", _material[ModelField.MaterialEmissive].Take(3)) + ";;" + Environment.NewLine +
+                            "0.000000;0.000000;0.000000;;" + Environment.NewLine +
+                            "}" + Environment.NewLine));
                     break;
 
                 default:
