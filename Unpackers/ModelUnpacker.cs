@@ -31,10 +31,14 @@ namespace MediaEngine.Unpackers
     }
 
     /// <summary>
-    /// See http://www.cgdev.net/axe/x-file.html
+    /// See http://www.martinreddy.net/gfx/3d/3DS.spec
     /// </summary>
     class ModelUnpacker : Unpacker<ModelField>
     {
+        private byte[] _vertices;
+        private byte[] _faces;
+
+        private readonly List<byte[]> _materials = new List<byte[]>();
         private readonly Dictionary<ModelField, float[]> _material = new Dictionary<ModelField, float[]>();
 
         protected override void Unpack(BinaryReader source, BinaryWriter destination, ModelField field)
@@ -46,32 +50,22 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ModelField.UnknownArray22:
-                    source.ReadBytes(_fieldValues[ModelField.VertexCount]);
+                    var unknown22 = source.ReadBytes(_fieldValues[ModelField.VertexCount]);
                     break;
 
                 case ModelField.Vertices:
-                    var meshVertices = _fieldValues[ModelField.VertexCount];
-                    var meshText = "xof 0302txt 0032" + Environment.NewLine // .x file header, 32-bit floats
-                        + "Mesh 0 {" + Environment.NewLine
-                        + meshVertices + "; // vertices" + Environment.NewLine
-                        + string.Join(string.Empty, Enumerable.Range(0, meshVertices)
-                            .Select(v => source.ReadSingle() + "; "
-                                + source.ReadSingle() + "; "
-                                + source.ReadSingle() + ";," + Environment.NewLine));
-                    
-                    meshText = meshText.Substring(0, meshText.Length - 3) + ";" + Environment.NewLine;
-                    destination.Write(Encoding.ASCII.GetBytes(meshText)); 
+                    _vertices = source.ReadBytes(12 * _fieldValues[ModelField.VertexCount]);
                     break;
 
                 case ModelField.FacesSingle:
                     _fieldValues[field] = source.ReadByte();
                     var indices = source.ReadBytes(_fieldValues[ModelField.IndexCount]);
-                    destination.Write(UnpackFaces(indices.Select(b => (short)b).ToArray()));
+                    UnpackFaces(indices.Select(b => (short)b).ToArray());
                     break;
 
                 case ModelField.FacesDouble:
-                    destination.Write(UnpackFaces(Enumerable.Range(0, _fieldValues[ModelField.IndexCount])
-                        .Select(i => source.ReadInt16()).ToArray()));
+                    UnpackFaces(Enumerable.Range(0, _fieldValues[ModelField.IndexCount])
+                        .Select(i => source.ReadInt16()).ToArray());
 
                     if (_fieldValues[ModelField.IndexCount] != 0)
                         switch (source.ReadByte())
@@ -104,16 +98,15 @@ namespace MediaEngine.Unpackers
                     if (byteCount != Math.Ceiling(byteCount))
                         materialList = materialList.Take(materialList.Length - 1).ToArray();
 
-                    destination.Write(Encoding.ASCII.GetBytes(
+                    /*destination.Write(Encoding.ASCII.GetBytes(
                         "MeshMaterialList {" + Environment.NewLine +
                         (1 + materialList.Max()) + "; // number of materials" + Environment.NewLine +
                         materialList.Length + "; // material for each face" + Environment.NewLine +
-                        string.Join("," + Environment.NewLine, materialList) + ";;" + Environment.NewLine));
-                    
+                        string.Join("," + Environment.NewLine, materialList) + ";;" + Environment.NewLine));*/
                     break;
 
                 case ModelField.UnknownArray113:
-                    source.ReadBytes(12);
+                    var unknown12 = source.ReadBytes(12);
                     break;
 
                 case ModelField.UnknownArray115:
@@ -141,13 +134,14 @@ namespace MediaEngine.Unpackers
 
                 case ModelField.MaterialName:
                     var name = Encoding.GetEncoding(932).GetString(source.ReadBytes(source.ReadInt32()));
-                    destination.Write(Encoding.UTF8.GetBytes(
+
+                    /*destination.Write(Encoding.UTF8.GetBytes(
                             "Material " + name + " {" + Environment.NewLine +
                             string.Join(";", _material[ModelField.MaterialAmbient]) + ";;" + Environment.NewLine +
                             _material[ModelField.MaterialPower][0] + ";" + Environment.NewLine +
                             string.Join(";", _material[ModelField.MaterialEmissive].Take(3)) + ";;" + Environment.NewLine +
                             "0.000000;0.000000;0.000000;;" + Environment.NewLine +
-                            "}" + Environment.NewLine));
+                            "}" + Environment.NewLine));*/
                     break;
 
                 default:
@@ -156,24 +150,64 @@ namespace MediaEngine.Unpackers
             }
         }
 
-        private static byte[] UnpackFaces(short[] indices)
+        private void UnpackFaces(short[] indices)
         {
-            var faces = new List<string>();
+            var faces = new List<short[]>();
             var i = 0;
-
             while (i < indices.Length)
-                faces.Add(string.Join(string.Empty, Enumerable.Range(0, indices[i] + 1)
-                    .Select(j => indices[i++] + ";")));
+                faces.Add(Enumerable.Range(0, indices[i] + 1).Select(j => indices[i++]).ToArray());
 
-            return Encoding.ASCII.GetBytes(faces.Count + "; // faces" + Environment.NewLine +
-                string.Join("," + Environment.NewLine, faces) +
-                ";" + Environment.NewLine);
+            using (var faceStream = new MemoryStream())
+            {
+                using (var faceWriter = new BinaryWriter(faceStream, Encoding.ASCII, true))
+                    foreach (var face in faces)
+                    {
+                        faceWriter.Write(face[2]);
+                        faceWriter.Write(face[1]);
+                        faceWriter.Write(face[3]);
+                        faceWriter.Write((short)0x0007); // face info
+
+                        // Convert quads
+                        if (face[0] == 4)
+                        {
+                            faceWriter.Write(face[3]);
+                            faceWriter.Write(face[1]);
+                            faceWriter.Write(face[4]);
+                            faceWriter.Write((short)0x0007); // face info
+                        }
+                    }
+
+                _faces = faceStream.ToArray();
+            }
         }
 
         protected override void OnFinish(BinaryWriter destination)
         {
-            destination.Write('}');
-            destination.Write('}');
+            var length = _faces.Length + _vertices.Length + 22;
+
+            destination.Write((ushort)0x4D4D); // MAIN3DS chunk
+            destination.Write(length + 20); // chunk length
+
+            destination.Write((ushort)0x3D3D); // EDIT3DS chunk
+            destination.Write(length + 14); // chunk length
+
+            destination.Write((ushort)0x4000); // EDIT_OBJECT chunk
+            destination.Write(length + 8); // chunk length
+            destination.Write(Encoding.ASCII.GetBytes("1")); // object name
+            destination.Write((byte)0); // object name terminator
+
+            destination.Write((ushort)0x4100); // OBJECT_TRIMESH chunk
+            destination.Write(length); // chunk length
+
+            destination.Write((ushort)0x4110); // TRI_VERTEXL chunk
+            destination.Write(_vertices.Length + 8); // chunk length
+            destination.Write((ushort)(_vertices.Length / 12)); // total vertices
+            destination.Write(_vertices);
+
+            destination.Write((ushort)0x4120); // TRI_FACEL1 chunk
+            destination.Write(_faces.Length + 8); // chunk length
+            destination.Write((ushort)(_faces.Length / 8)); // total polygons
+            destination.Write(_faces);
         }
     }
 }
