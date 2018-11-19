@@ -37,8 +37,11 @@ namespace MediaEngine.Unpackers
     {
         private byte[] _vertices;
         private byte[] _faces;
+        private byte[] _faceMaterials;
+        private List<short>[] _faceTriangles;
 
         private readonly List<byte[]> _materials = new List<byte[]>();
+        private readonly List<byte[]> _materialFaces = new List<byte[]>();
         private readonly Dictionary<ModelField, float[]> _material = new Dictionary<ModelField, float[]>();
 
         protected override void Unpack(BinaryReader source, BinaryWriter destination, ModelField field)
@@ -86,9 +89,9 @@ namespace MediaEngine.Unpackers
                 case ModelField.MaterialList:
                     var bitsPerItem = source.ReadByte();
                     var byteCount = _fieldValues[ModelField.FaceCount] * bitsPerItem / 32.0;
-                    var materialList = source.ReadBytes((int)Math.Ceiling(byteCount));
+                    _faceMaterials = source.ReadBytes((int)Math.Ceiling(byteCount));
                     if (bitsPerItem == 16)
-                        materialList = materialList.SelectMany(b => new[]
+                        _faceMaterials = _faceMaterials.SelectMany(b => new[]
                         {
                             (byte)((b & 0xF0) >> 4),
                             (byte)(b & 0x0F)
@@ -96,13 +99,7 @@ namespace MediaEngine.Unpackers
                         .ToArray();
 
                     if (byteCount != Math.Ceiling(byteCount))
-                        materialList = materialList.Take(materialList.Length - 1).ToArray();
-
-                    /*destination.Write(Encoding.ASCII.GetBytes(
-                        "MeshMaterialList {" + Environment.NewLine +
-                        (1 + materialList.Max()) + "; // number of materials" + Environment.NewLine +
-                        materialList.Length + "; // material for each face" + Environment.NewLine +
-                        string.Join("," + Environment.NewLine, materialList) + ";;" + Environment.NewLine));*/
+                        _faceMaterials = _faceMaterials.Take(_faceMaterials.Length - 1).ToArray();
                     break;
 
                 case ModelField.UnknownArray113:
@@ -133,15 +130,51 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ModelField.MaterialName:
-                    var name = Encoding.GetEncoding(932).GetString(source.ReadBytes(source.ReadInt32()));
+                    var name = Encoding.UTF8.GetBytes(Encoding.GetEncoding(932).GetString(source.ReadBytes(source.ReadInt32())));
 
-                    /*destination.Write(Encoding.UTF8.GetBytes(
-                            "Material " + name + " {" + Environment.NewLine +
-                            string.Join(";", _material[ModelField.MaterialAmbient]) + ";;" + Environment.NewLine +
-                            _material[ModelField.MaterialPower][0] + ";" + Environment.NewLine +
-                            string.Join(";", _material[ModelField.MaterialEmissive].Take(3)) + ";;" + Environment.NewLine +
-                            "0.000000;0.000000;0.000000;;" + Environment.NewLine +
-                            "}" + Environment.NewLine));*/
+                    // For material format see http://www.martinreddy.net/gfx/3d/MLI.spec
+                    using (var materialStream = new MemoryStream())
+                    using (var materialWriter = new BinaryWriter(materialStream, Encoding.ASCII, true))
+                    {
+                        materialWriter.Write((ushort)0xA000); // MAT_NAME chunk
+                        materialWriter.Write(31 + name.Length); // chunk length
+                        materialWriter.Write(name); // material name
+                        materialWriter.Write((byte)0); // name terminator
+
+                        materialWriter.Write((ushort)0xA010); // Ambient colour chunk
+                        materialWriter.Write(24); // chunk length
+
+                        materialWriter.Write((ushort)0x0010); // RGB chunk
+                        materialWriter.Write(18); // chunk length
+                        materialWriter.Write(_material[ModelField.MaterialAmbient][0]);
+                        materialWriter.Write(_material[ModelField.MaterialAmbient][1]);
+                        materialWriter.Write(_material[ModelField.MaterialAmbient][2]);
+                        
+                        _materials.Add(materialStream.ToArray());
+                    }
+
+                    if (_faceMaterials != null)
+                    {
+                        using (var materialStream = new MemoryStream())
+                        using (var materialWriter = new BinaryWriter(materialStream, Encoding.ASCII, true))
+                        {
+                            var triangleIndices = new List<short>();
+                            for (short faceIndex = 0; faceIndex < _faceMaterials.Length; faceIndex++)
+                                if (_faceMaterials[faceIndex] == _materials.Count - 1)
+                                    triangleIndices.AddRange(_faceTriangles[faceIndex]);
+
+                            materialWriter.Write((ushort)0x4130); // TRI_MATERIAL chunk
+                            materialWriter.Write(triangleIndices.Count * 2 + name.Length + 9); // chunk length
+                            materialWriter.Write(name); // material name
+                            materialWriter.Write((byte)0); // name terminator
+                            materialWriter.Write((short)triangleIndices.Count);
+
+                            foreach (var triangleIndex in triangleIndices)
+                                materialWriter.Write(triangleIndex);
+                            
+                            _materialFaces.Add(materialStream.ToArray());
+                        }
+                    }
                     break;
 
                 default:
@@ -157,11 +190,16 @@ namespace MediaEngine.Unpackers
             while (i < indices.Length)
                 faces.Add(Enumerable.Range(0, indices[i] + 1).Select(j => indices[i++]).ToArray());
 
+            i = 0;
+            short t = 0;
+            _faceTriangles = new List<short>[faces.Count];
+
             using (var faceStream = new MemoryStream())
             {
                 using (var faceWriter = new BinaryWriter(faceStream, Encoding.ASCII, true))
                     foreach (var face in faces)
                     {
+                        _faceTriangles[i] = new List<short>(new[] { t++ });   
                         faceWriter.Write(face[2]);
                         faceWriter.Write(face[1]);
                         faceWriter.Write(face[3]);
@@ -170,11 +208,14 @@ namespace MediaEngine.Unpackers
                         // Convert quads
                         if (face[0] == 4)
                         {
+                            _faceTriangles[i].Add(t++);
                             faceWriter.Write(face[3]);
                             faceWriter.Write(face[1]);
                             faceWriter.Write(face[4]);
                             faceWriter.Write((short)0x0007); // face info
                         }
+
+                        i++;
                     }
 
                 _faces = faceStream.ToArray();
@@ -183,21 +224,29 @@ namespace MediaEngine.Unpackers
 
         protected override void OnFinish(BinaryWriter destination)
         {
-            var length = _faces.Length + _vertices.Length + 22;
+            var materialsLength = _materials.Sum(m => m.Length) + 6;
+            var facesLength = _materialFaces.Sum(m => m.Length) + _faces.Length + 8;
+            var meshLength = facesLength + _vertices.Length + 14;
 
             destination.Write((ushort)0x4D4D); // MAIN3DS chunk
-            destination.Write(length + 20); // chunk length
+            destination.Write(meshLength + 20 + materialsLength); // chunk length
 
             destination.Write((ushort)0x3D3D); // EDIT3DS chunk
-            destination.Write(length + 14); // chunk length
+            destination.Write(meshLength + 14 + materialsLength); // chunk length
+
+            destination.Write((ushort)0xAFFF); // EDIT_MATERIAL chunk
+            destination.Write(materialsLength); // chunk length
+
+            foreach (var material in _materials)
+                destination.Write(material);
 
             destination.Write((ushort)0x4000); // EDIT_OBJECT chunk
-            destination.Write(length + 8); // chunk length
+            destination.Write(meshLength + 8); // chunk length
             destination.Write(Encoding.ASCII.GetBytes("1")); // object name
-            destination.Write((byte)0); // object name terminator
+            destination.Write((byte)0); // name terminator
 
             destination.Write((ushort)0x4100); // OBJECT_TRIMESH chunk
-            destination.Write(length); // chunk length
+            destination.Write(meshLength); // chunk length
 
             destination.Write((ushort)0x4110); // TRI_VERTEXL chunk
             destination.Write(_vertices.Length + 8); // chunk length
@@ -205,9 +254,12 @@ namespace MediaEngine.Unpackers
             destination.Write(_vertices);
 
             destination.Write((ushort)0x4120); // TRI_FACEL1 chunk
-            destination.Write(_faces.Length + 8); // chunk length
+            destination.Write(facesLength); // chunk length
             destination.Write((ushort)(_faces.Length / 8)); // total polygons
             destination.Write(_faces);
+
+            foreach (var materialFaces in _materialFaces)
+                destination.Write(materialFaces);
         }
     }
 }
