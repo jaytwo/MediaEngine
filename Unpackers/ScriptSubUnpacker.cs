@@ -8,13 +8,15 @@ namespace MediaEngine.Unpackers
     enum ScriptSubField
     {
         UnknownInt16 = 16,
+        UnknownInt17 = 17,
+        UnknownInt18 = 18,
         UnknownByte32 = 32,
-        Unknown33 = 33,
+        UnknownArray33 = 33,
+        UnknownArray34 = 34,
         UnknownArray35 = 35,
+        UnknownArray37 = 37,
         Unknown41 = 41,
         UnknownArray48 = 48,
-        UnknownArray49 = 49,
-        UnknownArray50 = 50,
         UnknownString64 = 64,
     }
 
@@ -29,7 +31,7 @@ namespace MediaEngine.Unpackers
                 case ScriptSubField.UnknownInt16:
                     _fieldValues[field] = source.ReadInt32();
                     if (_fieldValues[field] == 0 && source.ReadByte() != 255)
-                        throw new InvalidDataException();
+                        source.BaseStream.Position--;
                     break;
 
                 case ScriptSubField.UnknownByte32:
@@ -53,23 +55,24 @@ namespace MediaEngine.Unpackers
                 case ScriptSubField.UnknownArray35:
                     if (source.ReadByte() != 0)
                         throw new InvalidDataException();
-                    _fieldValues.Add(field, source.ReadInt32());
+                    _fieldValues[field] = source.ReadInt32();
                     var unknownArray35 = Enumerable.Range(0, _fieldValues[field])
                         .Select(i => source.ReadInt32())
                         .ToArray();
                     break;
 
                 case ScriptSubField.UnknownArray48:
-                case ScriptSubField.UnknownArray49:
-                case ScriptSubField.UnknownArray50:
                     var unknownArray = new List<byte>();
-                    byte b1;
-                    var b2 = field == ScriptSubField.UnknownArray50 ? 255 : ((byte)field + 1);
-                    while ((b1 = source.ReadByte()) != b2)
+                    unknownArray.Add(48);
+                    while (true)
+                    {
+                        byte b1 = source.ReadByte();
+                        if ((b1 == 35 || (b1 == 51 && unknownArray.Count == 9)) && unknownArray.Last() == 255)
+                            break;
                         unknownArray.Add(b1);
-                    if (field != ScriptSubField.UnknownArray50)
-                        source.BaseStream.Position--;
-                    _fieldValues.Add(field, unknownArray.Count);
+                    }
+                    source.BaseStream.Position--;
+                    _fieldValues[field] = unknownArray.Count;
                     break;
 
                 case ScriptSubField.UnknownString64:
@@ -81,7 +84,37 @@ namespace MediaEngine.Unpackers
                     source.ReadInt16();
                     break;
 
-                case ScriptSubField.Unknown33:
+                case ScriptSubField.UnknownArray33:
+                case ScriptSubField.UnknownArray34:
+                case ScriptSubField.UnknownArray37:
+                    if (source.ReadByte() != 0)
+                        throw new InvalidDataException();
+                    _fieldValues[field] = source.ReadInt32();
+                    var unknownBytes3x = source.ReadBytes(_fieldValues[field] * (field == ScriptSubField.UnknownArray34 ? 4 : 8));
+                    if (field == ScriptSubField.UnknownArray34)
+                    {
+                        var unknown118 = source.ReadBytes(13);
+                    }
+                    if (source.ReadByte() != 33)
+                        source.BaseStream.Position--;
+                    else
+                    {
+                        if (source.ReadByte() != 0)
+                            throw new InvalidDataException();
+                        var unknown11833 = source.ReadBytes(source.ReadInt32());
+                        if (source.ReadByte() != 34)
+                            throw new InvalidDataException();
+                        if (source.ReadInt16() != 0)
+                            throw new InvalidDataException();
+                        var unknown11834 = source.ReadBytes(unknown11833.Length * 2);
+                        source.ReadBytes(8);
+                    }
+                    break;
+
+                case ScriptSubField.UnknownInt17:
+                    _fieldValues[field] = source.ReadInt32();
+                    if (_fieldValues[field] == 11)
+                        value = Encoding.GetEncoding(932).GetString(source.ReadBytes(_fieldValues[field]));
                     break;
 
                 default:
