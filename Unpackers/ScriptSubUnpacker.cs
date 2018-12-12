@@ -53,12 +53,7 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ScriptSubField.UnknownArray35:
-                    if (source.ReadByte() != 0)
-                        throw new InvalidDataException();
-                    _fieldValues[field] = source.ReadInt32();
-                    var unknownArray35 = Enumerable.Range(0, _fieldValues[field])
-                        .Select(i => source.ReadInt32())
-                        .ToArray();
+                    ReadUnknownArray35(source);
                     break;
 
                 case ScriptSubField.UnknownArray48:
@@ -67,8 +62,18 @@ namespace MediaEngine.Unpackers
                     while (true)
                     {
                         byte b1 = source.ReadByte();
-                        if ((b1 == 35 || (b1 == 51 && unknownArray.Count == 9)) && unknownArray.Last() == 255)
+                        if (b1 == 51 && unknownArray.Count == 9 && unknownArray.Last() == 255)
                             break;
+                        if (b1 == 35 && unknownArray.Last() == 255)
+                        {
+                            b1 = source.ReadByte();
+                            if (b1 == 0)
+                            {
+                                source.BaseStream.Position--;
+                                break;
+                            }
+                            unknownArray.Add(35);
+                        }
                         unknownArray.Add(b1);
                     }
                     source.BaseStream.Position--;
@@ -93,7 +98,11 @@ namespace MediaEngine.Unpackers
                     var unknownBytes3x = source.ReadBytes(_fieldValues[field] * (field == ScriptSubField.UnknownArray34 ? 4 : 8));
                     if (field == ScriptSubField.UnknownArray34)
                     {
-                        var unknown118 = source.ReadBytes(13);
+                        if (source.ReadByte() == 42)
+                            source.ReadBytes(6);
+                        ReadUnknownArray35(source);
+                        if (source.ReadByte() != 255)
+                            source.BaseStream.Position--;
                     }
                     if (source.ReadByte() != 33)
                         source.BaseStream.Position--;
@@ -101,13 +110,17 @@ namespace MediaEngine.Unpackers
                     {
                         if (source.ReadByte() != 0)
                             throw new InvalidDataException();
-                        var unknown11833 = source.ReadBytes(source.ReadInt32());
-                        if (source.ReadByte() != 34)
-                            throw new InvalidDataException();
+                        var unknown11833 = new List<byte>(source.ReadBytes(source.ReadInt32()));
+                        byte b3;
+                        while ((b3 = source.ReadByte()) != 34)
+                            unknown11833.Add(b3);
                         if (source.ReadInt16() != 0)
                             throw new InvalidDataException();
-                        var unknown11834 = source.ReadBytes(unknown11833.Length * 2);
-                        source.ReadBytes(8);
+                        var unknown11834 = new List<byte>(source.ReadBytes(unknown11833.Count * 2));
+                        while ((b3 = source.ReadByte()) != 255)
+                            unknown11834.Add(b3);
+                        while (source.ReadByte() == 255) { }
+                        source.BaseStream.Position--;
                     }
                     break;
 
@@ -123,6 +136,16 @@ namespace MediaEngine.Unpackers
             }
 
             destination.Write(Encoding.UTF8.GetBytes(string.Format("{0} = {1}\r\n", field, value ?? _fieldValues[field].ToString())));
+        }
+
+        private void ReadUnknownArray35(BinaryReader source)
+        {
+            if (source.ReadByte() != 0)
+                throw new InvalidDataException();
+            _fieldValues[ScriptSubField.UnknownArray35] = source.ReadInt32();
+            var unknownArray35 = Enumerable.Range(0, _fieldValues[ScriptSubField.UnknownArray35])
+                .Select(i => source.ReadInt32())
+                .ToArray();
         }
     }
 }
