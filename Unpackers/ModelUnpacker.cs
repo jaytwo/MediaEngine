@@ -222,7 +222,7 @@ namespace MediaEngine.Unpackers
             }
         }
 
-        protected override void OnFinish(BinaryWriter destination)
+        protected override bool OnFinish(BinaryWriter destination)
         {
             var materialsLength = _materials.Sum(m => m.Length) + 6;
             var facesLength = _materialFaces.Sum(m => m.Length) + _faces.Length + 8;
@@ -260,6 +260,8 @@ namespace MediaEngine.Unpackers
 
             foreach (var materialFaces in _materialFaces)
                 destination.Write(materialFaces);
+
+            return true;
         }
     }
 }
