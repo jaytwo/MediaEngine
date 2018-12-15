@@ -35,14 +35,15 @@ namespace MediaEngine.Unpackers
     /// </summary>
     class ModelUnpacker : Unpacker<ModelField>
     {
+        private class Material : Dictionary<ModelField, float[]> { }
+
         private byte[] _vertices;
         private byte[] _faces;
         private byte[] _faceMaterials;
         private List<short>[] _faceTriangles;
 
-        private readonly List<byte[]> _materials = new List<byte[]>();
-        private readonly List<byte[]> _materialFaces = new List<byte[]>();
-        private readonly Dictionary<ModelField, float[]> _material = new Dictionary<ModelField, float[]>();
+        private readonly List<string> _names = new List<string>();
+        private readonly List<Material> _materials = new List<Material>();
 
         protected override void Unpack(BinaryReader source, BinaryWriter destination, ModelField field)
         {
@@ -117,10 +118,12 @@ namespace MediaEngine.Unpackers
                 case ModelField.MaterialAmbient:
                 case ModelField.MaterialEmissive:
                 case ModelField.MaterialSpecular:
-                    _material[field] = Enumerable.Range(0, 4)
+                    if (_materials.Count == 0 || _materials.Last().ContainsKey(field))
+                        _materials.Add(new Material());
+                    _materials.Last()[field] = Enumerable.Range(0, 4)
                         .Select(i => source.ReadSingle())
                         .ToArray();
-                    _material[field][3] = 1;
+                    _materials.Last()[field][3] = 1;
                     break;
 
                 case ModelField.UnknownShort149:
@@ -130,51 +133,8 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ModelField.MaterialName:
-                    var name = Encoding.UTF8.GetBytes(Encoding.GetEncoding(932).GetString(source.ReadBytes(source.ReadInt32())));
-
-                    // For material format see http://www.martinreddy.net/gfx/3d/MLI.spec
-                    using (var materialStream = new MemoryStream())
-                    using (var materialWriter = new BinaryWriter(materialStream, Encoding.ASCII, true))
-                    {
-                        materialWriter.Write((ushort)0xA000); // MAT_NAME chunk
-                        materialWriter.Write(31 + name.Length); // chunk length
-                        materialWriter.Write(name); // material name
-                        materialWriter.Write((byte)0); // name terminator
-
-                        materialWriter.Write((ushort)0xA010); // Ambient colour chunk
-                        materialWriter.Write(24); // chunk length
-
-                        materialWriter.Write((ushort)0x0010); // RGB chunk
-                        materialWriter.Write(18); // chunk length
-                        materialWriter.Write(_material[ModelField.MaterialAmbient][0]);
-                        materialWriter.Write(_material[ModelField.MaterialAmbient][1]);
-                        materialWriter.Write(_material[ModelField.MaterialAmbient][2]);
-                        
-                        _materials.Add(materialStream.ToArray());
-                    }
-
-                    if (_faceMaterials != null)
-                    {
-                        using (var materialStream = new MemoryStream())
-                        using (var materialWriter = new BinaryWriter(materialStream, Encoding.ASCII, true))
-                        {
-                            var triangleIndices = new List<short>();
-                            for (short faceIndex = 0; faceIndex < _faceMaterials.Length; faceIndex++)
-                                if (_faceMaterials[faceIndex] == _materials.Count - 1)
-                                    triangleIndices.AddRange(_faceTriangles[faceIndex]);
-
-                            materialWriter.Write((ushort)0x4130); // TRI_MATERIAL chunk
-                            materialWriter.Write(triangleIndices.Count * 2 + name.Length + 9); // chunk length
-                            materialWriter.Write(name); // material name
-                            materialWriter.Write((byte)0); // name terminator
-                            materialWriter.Write((short)triangleIndices.Count);
-
-                            foreach (var triangleIndex in triangleIndices)
-                                materialWriter.Write(triangleIndex);
-                            
-                            _materialFaces.Add(materialStream.ToArray());
-                        }
-                    }
+                    var nameString = Encoding.GetEncoding(932).GetString(source.ReadBytes(source.ReadInt32()));
+                    _names.Add(Translator.Translate(nameString));
                     break;
 
                 default:
@@ -224,42 +184,125 @@ namespace MediaEngine.Unpackers
 
         protected override bool OnFinish(BinaryWriter destination)
         {
-            var materialsLength = _materials.Sum(m => m.Length) + 6;
-            var facesLength = _materialFaces.Sum(m => m.Length) + _faces.Length + 8;
-            var meshLength = facesLength + _vertices.Length + 14;
+            // For material format see http://www.martinreddy.net/gfx/3d/MLI.spec
+            var materials = new MemoryStream();
+            using (var writer = new BinaryWriter(materials, Encoding.ASCII, true))
+                for (int i = 0; i < _materials.Count; i++)
+                {
+                    var name = Encoding.UTF8.GetBytes(_names[i]);
+                    writer.Write((ushort)0xAFFF); // EDIT_MATERIAL chunk
+                    writer.Write(name.Length + 61); // chunk length
+
+                    writer.Write((ushort)0xA000); // MAT_NAME chunk
+                    writer.Write(name.Length + 7); // chunk length
+                    writer.Write(name); // material name
+                    writer.Write((byte)0); // name terminator
+
+                    writer.Write((ushort)0xA010); // Ambient colour chunk
+                    writer.Write(24); // chunk length
+
+                    writer.Write((ushort)0x0010); // RGB chunk
+                    writer.Write(18); // chunk length
+                    writer.Write(_materials[i][ModelField.MaterialAmbient][0]);
+                    writer.Write(_materials[i][ModelField.MaterialAmbient][1]);
+                    writer.Write(_materials[i][ModelField.MaterialAmbient][2]);
+
+                    writer.Write((ushort)0xA020); // Diffuse colour chunk
+                    writer.Write(24); // chunk length
+
+                    writer.Write((ushort)0x0010); // RGB chunk
+                    writer.Write(18); // chunk length
+                    writer.Write(_materials[i][ModelField.MaterialAmbient][0]);
+                    writer.Write(_materials[i][ModelField.MaterialAmbient][1]);
+                    writer.Write(_materials[i][ModelField.MaterialAmbient][2]);
+                }
+
+            var hierarchies = new MemoryStream();
+            using (var writer = new BinaryWriter(hierarchies, Encoding.ASCII, true))
+                for (int i = 0; i < _names.Count; i++)
+                {
+                    var name = Encoding.UTF8.GetBytes(_names[i]);
+                    writer.Write((ushort)0xB010); // KEYF_OBJHIERARCH chunk
+                    writer.Write(13 + name.Length); // chunk length
+                    writer.Write(name); // material name
+                    writer.Write((byte)0); // name terminator
+                    writer.Write(0); // unknown 4 bytes
+                    writer.Write((ushort)(ushort.MaxValue)); // TODO: Hierarchy of object
+                }
+
+            var objects = new MemoryStream();
+            var objectIndices = _faceMaterials == null ?
+                Enumerable.Range(0, _names.Count) :
+                _faceMaterials.Distinct().Select(b => (int)b).ToArray();
+
+            using (var writer = new BinaryWriter(objects, Encoding.ASCII, true))
+                foreach (var i in objectIndices)
+                {
+                    var name = Encoding.UTF8.GetBytes(_names[i]);
+
+                    var materialFaces = new MemoryStream();
+                    var faces = _faces;
+                    if (_faceMaterials != null)
+                        using (var faceWriter = new BinaryWriter(materialFaces, Encoding.ASCII, true))
+                        {
+                            var trimmedFaces = new List<byte>();
+                            for (short faceIndex = 0; faceIndex < _faceMaterials.Length; faceIndex++)
+                                if (_faceMaterials[faceIndex] == i)
+                                    foreach (var triangleIndex in _faceTriangles[faceIndex])
+                                        for (int j = 0; j < 8; j++)
+                                            trimmedFaces.Add(_faces[triangleIndex * 8 + j]);
+
+                            faceWriter.Write((ushort)0x4130); // TRI_MATERIAL chunk
+                            faceWriter.Write(trimmedFaces.Count / 4 + name.Length + 9); // chunk length
+                            faceWriter.Write(name); // material name
+                            faceWriter.Write((byte)0); // name terminator
+                            faceWriter.Write((short)trimmedFaces.Count / 8);
+
+                            foreach (var triangleIndex in Enumerable.Range(1, trimmedFaces.Count / 8))
+                                faceWriter.Write((ushort)triangleIndex);
+
+                            faces = trimmedFaces.ToArray();
+                        }
+                    
+                    var facesLength = (int)materialFaces.Length + faces.Length + 8;
+                    var meshLength = facesLength + _vertices.Length + 14;
+
+                    writer.Write((ushort)0x4000); // EDIT_OBJECT chunk
+                    writer.Write(meshLength + 7 + name.Length); // chunk length
+                    writer.Write(name); // object name
+                    writer.Write((byte)0); // name terminator
+
+                    writer.Write((ushort)0x4100); // OBJECT_TRIMESH chunk
+                    writer.Write(meshLength); // chunk length
+
+                    writer.Write((ushort)0x4110); // TRI_VERTEXL chunk
+                    writer.Write(_vertices.Length + 8); // chunk length
+                    writer.Write((ushort)(_vertices.Length / 12)); // total vertices
+                    writer.Write(_vertices);
+
+                    writer.Write((ushort)0x4120); // TRI_FACEL1 chunk
+                    writer.Write(facesLength); // chunk length
+                    writer.Write((ushort)(faces.Length / 8)); // total polygons
+                    writer.Write(faces);
+
+                    writer.Write(materialFaces.ToArray());
+                }
 
             destination.Write((ushort)0x4D4D); // MAIN3DS chunk
-            destination.Write(meshLength + 20 + materialsLength); // chunk length
+            destination.Write((int)(objects.Length + materials.Length + hierarchies.Length + 24)); // chunk length
 
             destination.Write((ushort)0x3D3D); // EDIT3DS chunk
-            destination.Write(meshLength + 14 + materialsLength); // chunk length
+            destination.Write((int)(objects.Length + materials.Length + 6)); // chunk length
+            destination.Write(materials.ToArray());
 
-            destination.Write((ushort)0xAFFF); // EDIT_MATERIAL chunk
-            destination.Write(materialsLength); // chunk length
+            destination.Write(objects.ToArray());
 
-            foreach (var material in _materials)
-                destination.Write(material);
+            destination.Write((ushort)0xB000); // KEYF3DS chunk
+            destination.Write((int)hierarchies.Length + 12); // chunk length
 
-            destination.Write((ushort)0x4000); // EDIT_OBJECT chunk
-            destination.Write(meshLength + 8); // chunk length
-            destination.Write(Encoding.ASCII.GetBytes("1")); // object name
-            destination.Write((byte)0); // name terminator
-
-            destination.Write((ushort)0x4100); // OBJECT_TRIMESH chunk
-            destination.Write(meshLength); // chunk length
-
-            destination.Write((ushort)0x4110); // TRI_VERTEXL chunk
-            destination.Write(_vertices.Length + 8); // chunk length
-            destination.Write((ushort)(_vertices.Length / 12)); // total vertices
-            destination.Write(_vertices);
-
-            destination.Write((ushort)0x4120); // TRI_FACEL1 chunk
-            destination.Write(facesLength); // chunk length
-            destination.Write((ushort)(_faces.Length / 8)); // total polygons
-            destination.Write(_faces);
-
-            foreach (var materialFaces in _materialFaces)
-                destination.Write(materialFaces);
+            destination.Write((ushort)0xB002); // KEYF_OBJDES chunk
+            destination.Write((int)hierarchies.Length + 6); // chunk length
+            destination.Write(hierarchies.ToArray());
 
             return true;
         }
