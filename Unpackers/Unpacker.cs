@@ -10,7 +10,7 @@ namespace MediaEngine.Unpackers
 
         protected abstract void Unpack(BinaryReader source, BinaryWriter destination, T field);
 
-        protected virtual bool OnFinish(BinaryWriter destination) { return true; }
+        protected virtual bool OnFinish(BinaryReader source, BinaryWriter destination) { return true; }
 
         public void Unpack(BinaryReader source, BinaryWriter destination)
         {
@@ -24,7 +24,7 @@ namespace MediaEngine.Unpackers
 
                 if (fieldByte == 255)
                 {
-                    if (OnFinish(destination))
+                    if (OnFinish(source, destination))
                     {
                         _fieldValues[field] = source.ReadByte();
                         return;

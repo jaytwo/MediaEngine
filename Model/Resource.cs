@@ -38,6 +38,7 @@ namespace MediaEngine.Unpackers
 
                 var nameBytes = source.ReadBytes(source.ReadByte() + 3);
                 Name = Encoding.GetEncoding(932).GetString(nameBytes).TrimStart('\0');
+                Name = Translator.Translate(Name);
 
                 if (source.ReadByte() != 2)
                     throw new InvalidDataException();

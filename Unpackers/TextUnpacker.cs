@@ -30,7 +30,7 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case TextField.Font:
-                    value = Encoding.GetEncoding(932).GetString(source.ReadBytes(source.ReadInt32()));
+                    value = Translator.ReadString(source);
                     break;
 
                 case TextField.Byte22:
@@ -41,8 +41,7 @@ namespace MediaEngine.Unpackers
                     var count = source.ReadInt32();
                     value = string.Empty;
                     for (int i = 0; i < count; i++)
-                        value += Environment.NewLine +
-                            Encoding.GetEncoding(932).GetString(source.ReadBytes(source.ReadInt32()));
+                        value += Environment.NewLine + Translator.ReadString(source);
                     break;
 
                 default:

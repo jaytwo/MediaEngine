@@ -17,55 +17,62 @@ namespace MediaEngine.Unpackers
 
                 var name = Path.Combine(path,
                     resource.ResourceType.ToString(),
-                    resource.Index + "-" + resource.Name + Path.GetExtension(resource.Source));
+                    resource.Index + (resource.ResourceType == ResourceType.Texture ? string.Empty : ("-" + resource.Name)) + Path.GetExtension(resource.Source));
 
                 Directory.CreateDirectory(Path.GetDirectoryName(name));
 
                 using (var output = File.Create(name))
                 using (var writer = new BinaryWriter(output))
                 {
-                    switch (resource.ResourceType)
+                    try
                     {
-                        case ResourceType.Model:
-                            new ModelUnpacker().Unpack(source, writer);
-                            break;
+                        switch (resource.ResourceType)
+                        {
+                            case ResourceType.Model:
+                                new ModelUnpacker().Unpack(source, writer);
+                                break;
 
-                        case ResourceType.Texture:
-                        case ResourceType.Bitmap:
-                            new BitmapUnpacker().Unpack(source, writer);
-                            break;
+                            case ResourceType.Texture:
+                            case ResourceType.Bitmap:
+                                new BitmapUnpacker().Unpack(source, writer);
+                                break;
 
-                        case ResourceType.Text:
-                            new TextUnpacker().Unpack(source, writer);
-                            break;
+                            case ResourceType.Text:
+                                new TextUnpacker().Unpack(source, writer);
+                                break;
 
-                        case ResourceType.Wave:
-                        case ResourceType.Stereo:
-                            new WaveUnpacker().Unpack(source, writer);
-                            break;
+                            case ResourceType.Wave:
+                            case ResourceType.Sound3d:
+                                new WaveUnpacker().Unpack(source, writer);
+                                break;
 
-                        case ResourceType.Midi:
-                            new MidiUnpacker().Unpack(source, writer);
-                            break;
+                            case ResourceType.Midi:
+                                new MidiUnpacker().Unpack(source, writer);
+                                break;
 
-                        case ResourceType.Camera:
-                            new CameraUnpacker().Unpack(source, writer);
-                            break;
+                            case ResourceType.Camera:
+                                new CameraUnpacker().Unpack(source, writer);
+                                break;
 
-                        case ResourceType.Light:
-                            new LightUnpacker().Unpack(source, writer);
-                            break;
+                            case ResourceType.Light:
+                                new LightUnpacker().Unpack(source, writer);
+                                break;
 
-                        case ResourceType.Ear:
-                            new EarUnpacker().Unpack(source, writer);
-                            break;
+                            case ResourceType.Ear:
+                                new EarUnpacker().Unpack(source, writer);
+                                break;
 
-                        case ResourceType.Movie:
-                            throw new NotImplementedException();
+                            case ResourceType.Movie:
+                                throw new NotImplementedException();
 
-                        case ResourceType.Script:
-                            new ScriptUnpacker().Unpack(source, writer);
-                            break;
+                            case ResourceType.Script:
+                                new ScriptUnpacker().Unpack(source, writer);
+                                break;
+                        }
+                    }
+                    catch (EndOfStreamException)
+                    {
+                        yield break;
                     }
                 }
             }
