@@ -15,10 +15,11 @@ namespace MediaEngine.Unpackers
                 var resource = new Resource(source);
                 yield return resource;
 
-                var name = Path.Combine(path,
-                    resource.ResourceType.ToString(),
-                    resource.Index + (resource.ResourceType == ResourceType.Texture ? string.Empty : ("-" + resource.Name)) + Path.GetExtension(resource.Source));
+                // Force textures to something predictable because we unpack them after models refer to them
+                var fileName = resource.ResourceType == ResourceType.Texture ? ".bmp" :
+                    ("-" + resource.Name + Path.GetExtension(resource.Source));
 
+                var name = Path.Combine(path, resource.ResourceType.ToString(), resource.Index + fileName);
                 Directory.CreateDirectory(Path.GetDirectoryName(name));
 
                 using (var output = File.Create(name))

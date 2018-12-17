@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace MediaEngine.Unpackers
 {
@@ -39,11 +38,11 @@ namespace MediaEngine.Unpackers
         UnknownFloat161 = 161,
         UnknownFloat162 = 162,
         UnknownFloat163 = 163,
-        UnknownInt164 = 164,
-        UnknownInt165 = 165,
+        UnknownFloat164 = 164,
+        UnknownFloat165 = 165,
         UnknownInt166 = 166,
         UnknownInt176 = 176,
-        Name = 177,
+        GroupName = 177,
         UnknownInt178 = 178,
         UnknownInt192 = 192,
         UnknownInt193 = 193,
@@ -58,16 +57,17 @@ namespace MediaEngine.Unpackers
         UnknownInt202 = 202,
     }
 
-    class SceneObject : Dictionary<ModelField, object> { }
+    class Group : Dictionary<ModelField, object> { }
 
     class ModelUnpacker : Unpacker<ModelField>
     {
-        private byte[] _vertices;
-        private byte[] _faces;
         private byte[] _faceMaterials;
-        private List<short>[] _faceTriangles;
-        
-        private readonly List<SceneObject> _sceneObjects = new List<SceneObject>();
+
+        private readonly List<float[]> _vertices = new List<float[]>();
+        private readonly List<short[]> _faces = new List<short[]>();
+        private readonly List<Group> _groups = new List<Group>();
+
+        private Group _group;
 
         protected override void Unpack(BinaryReader source, BinaryWriter destination, ModelField field)
         {
@@ -83,10 +83,13 @@ namespace MediaEngine.Unpackers
 
                 case ModelField.UnknownArray22:
                     var unknown22 = source.ReadBytes(_fieldValues[ModelField.VertexCount]);
+                    _fieldValues.Add(field, unknown22.Count());
                     break;
 
                 case ModelField.Vertices:
-                    _vertices = source.ReadBytes(12 * _fieldValues[ModelField.VertexCount]);
+                    _vertices.AddRange(Enumerable.Range(0, _fieldValues[ModelField.VertexCount])
+                        .Select(i => new[] { source.ReadSingle(), source.ReadSingle(), source.ReadSingle() })
+                        .ToList());
                     break;
 
                 case ModelField.FacesSingle:
@@ -132,28 +135,28 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ModelField.UnknownArray113:
-                    var unknown12 = source.ReadBytes(12);
+                    _group.Add(field, source.ReadBytes(12));
                     break;
 
                 case ModelField.UnknownArray115:
-                    var unknown24 = Enumerable.Range(0, 6)
+                    _group.Add(field, Enumerable.Range(0, 6)
                         .Select(i => source.ReadUInt32())
                         .Where(i => i != uint.MaxValue)
-                        .ToArray();
+                        .ToArray());
                     break;
 
                 case ModelField.MaterialPower:
                 case ModelField.MaterialAmbient:
                 case ModelField.MaterialEmissive:
                 case ModelField.MaterialSpecular:
-                    _sceneObjects.Last().Add(field, Enumerable.Range(0, 4)
+                    _group.Add(field, Enumerable.Range(0, 4)
                         .Select(i => source.ReadSingle())
                         .ToArray());
                     break;
 
                 case ModelField.UnknownShort149:
                 case ModelField.UnknownShort151:
-                    _sceneObjects.Last().Add(field, source.ReadInt16());
+                    _group.Add(field, source.ReadInt16());
                     break;
 
                 case ModelField.UnknownInt112:
@@ -162,8 +165,6 @@ namespace MediaEngine.Unpackers
                 case ModelField.UnknownInt129:
                 case ModelField.UnknownInt130:
                 case ModelField.UnknownInt131:
-                case ModelField.UnknownInt164:
-                case ModelField.UnknownInt165:
                 case ModelField.UnknownInt166:
                 case ModelField.UnknownInt176:
                 case ModelField.UnknownInt178:
@@ -176,9 +177,9 @@ namespace MediaEngine.Unpackers
                 case ModelField.UnknownInt200:
                 case ModelField.UnknownInt201:
                 case ModelField.UnknownInt202:
-                    if (_sceneObjects.Count == 0 || _sceneObjects.Last().ContainsKey(field))
-                        _sceneObjects.Add(new SceneObject());
-                    _sceneObjects.Last().Add(field, source.ReadInt32());
+                    if (_group == null || _group.ContainsKey(field))
+                        _groups.Add(_group = new Group());
+                    _group.Add(field, source.ReadInt32());
                     break;
 
                 case ModelField.UnknownFloat148:
@@ -186,13 +187,15 @@ namespace MediaEngine.Unpackers
                 case ModelField.UnknownFloat161:
                 case ModelField.UnknownFloat162:
                 case ModelField.UnknownFloat163:
+                case ModelField.UnknownFloat164:
+                case ModelField.UnknownFloat165:
                 case ModelField.UnknownFloat196:
                 case ModelField.UnknownFloat197:
-                    _sceneObjects.Last().Add(field, source.ReadSingle());
+                    _group.Add(field, source.ReadSingle());
                     break;
 
-                case ModelField.Name:
-                    _sceneObjects.Last().Add(field, Translator.ReadString(source));
+                case ModelField.GroupName:
+                    _group.Add(field, Translator.ReadString(source));
                     break;
 
                 default:
@@ -203,46 +206,14 @@ namespace MediaEngine.Unpackers
 
         private void UnpackFaces(short[] indices)
         {
-            var faces = new List<short[]>();
             var i = 0;
             while (i < indices.Length)
-                faces.Add(Enumerable.Range(0, indices[i] + 1).Select(j => indices[i++]).ToArray());
-
-            i = 0;
-            short t = 0;
-            _faceTriangles = new List<short>[faces.Count];
-
-            using (var faceStream = new MemoryStream())
-            {
-                using (var faceWriter = new BinaryWriter(faceStream, Encoding.ASCII, true))
-                    foreach (var face in faces)
-                    {
-                        _faceTriangles[i] = new List<short>(new[] { t++ });   
-                        faceWriter.Write(face[1]);
-                        faceWriter.Write(face[2]);
-                        faceWriter.Write(face[3]);
-                        faceWriter.Write((short)0); // face info
-
-                        // Convert quads
-                        if (face[0] == 4)
-                        {
-                            _faceTriangles[i].Add(t++);
-                            faceWriter.Write(face[4]);
-                            faceWriter.Write(face[1]);
-                            faceWriter.Write(face[3]);
-                            faceWriter.Write((short)0); // face info
-                        }
-
-                        i++;
-                    }
-
-                _faces = faceStream.ToArray();
-            }
+                _faces.Add(Enumerable.Range(0, indices[i] + 1).Select(j => indices[i++]).ToArray());
         }
 
         protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
         {
-            ModelExporter.Export(_sceneObjects, _vertices, _faces, _faceMaterials, _faceTriangles, destination);
+            ModelExporter.Export(_groups, _vertices, _faces, _faceMaterials, destination);
             return true;
         }
     }
