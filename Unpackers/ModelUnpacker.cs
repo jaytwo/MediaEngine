@@ -17,7 +17,7 @@ namespace MediaEngine.Unpackers
         FacesDouble = 33,
         UnknownMarker34 = 34,
         FacesSingle = 35,
-        MaterialList = 36,
+        FaceGroups = 36,
         UnknownInt112 = 112,
         UnknownArray113 = 113,
         UnknownInt114 = 114,
@@ -61,7 +61,7 @@ namespace MediaEngine.Unpackers
 
     class ModelUnpacker : Unpacker<ModelField>
     {
-        private byte[] _faceMaterials;
+        private short[] _faceGroups;
 
         private readonly List<float[]> _vertices = new List<float[]>();
         private readonly List<short[]> _faces = new List<short[]>();
@@ -103,27 +103,22 @@ namespace MediaEngine.Unpackers
                         .Select(i => source.ReadInt16()).ToArray());
 
                     if (_fieldValues[ModelField.IndexCount] != 0)
-                        switch (source.ReadByte())
-                        {
-                            case 34:
-                                var unknown34 = Enumerable.Range(0, _fieldValues[ModelField.FaceCount])
-                                    .Select(i => source.ReadInt16())
-                                    .ToArray();
-                                break;
-
-                            default:
-                                source.BaseStream.Position--;
-                                break;
-                        }
-
+                    {
+                        if (source.ReadByte() == 34)
+                            _faceGroups = Enumerable.Range(0, _fieldValues[ModelField.FaceCount])
+                                .Select(i => source.ReadInt16())
+                                .ToArray();
+                        else
+                            source.BaseStream.Position--;
+                    }
                     break;
 
-                case ModelField.MaterialList:
+                case ModelField.FaceGroups:
                     var bitsPerItem = source.ReadByte();
                     var byteCount = _fieldValues[ModelField.FaceCount] * bitsPerItem / 32.0;
-                    _faceMaterials = source.ReadBytes((int)Math.Ceiling(byteCount));
+                    var faceGroups = source.ReadBytes((int)Math.Ceiling(byteCount));
                     if (bitsPerItem == 16)
-                        _faceMaterials = _faceMaterials.SelectMany(b => new[]
+                        faceGroups = faceGroups.SelectMany(b => new[]
                         {
                             (byte)((b & 0xF0) >> 4),
                             (byte)(b & 0x0F)
@@ -131,7 +126,8 @@ namespace MediaEngine.Unpackers
                         .ToArray();
 
                     if (byteCount != Math.Ceiling(byteCount))
-                        _faceMaterials = _faceMaterials.Take(_faceMaterials.Length - 1).ToArray();
+                        faceGroups = faceGroups.Take(faceGroups.Length - 1).ToArray();
+                    _faceGroups = faceGroups.Select(b => (short)b).ToArray();
                     break;
 
                 case ModelField.UnknownArray113:
@@ -213,7 +209,7 @@ namespace MediaEngine.Unpackers
 
         protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
         {
-            ModelExporter.Export(_groups, _vertices, _faces, _faceMaterials, destination);
+            ModelExporter.Export(_groups, _vertices, _faces, _faceGroups, destination);
             return true;
         }
     }

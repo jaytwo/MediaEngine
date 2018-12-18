@@ -12,7 +12,7 @@ namespace MediaEngine.Exporters
     /// </summary>
     static class ModelExporter
     {
-        public static void Export(List<Group> groups, List<float[]> allVertices, List<short[]> allFaces, byte[] faceGroupIds, BinaryWriter destination)
+        public static void Export(List<Group> groups, List<float[]> allVertices, List<short[]> allFaces, short[] faceGroupIds, BinaryWriter destination)
         {
             var materials = new MemoryStream();
             using (var writer = new BinaryWriter(materials, Encoding.ASCII, true))
@@ -86,14 +86,15 @@ namespace MediaEngine.Exporters
             
             foreach (var face in allFaces)
             {
+                // Reverse winding direction
                 triangles[faceIndex] = new List<short>(new[] { triangleCount++ });
-                faceVertices.Add(new[] { face[1], face[2], face[3], (short)0 });
+                faceVertices.Add(new[] { face[1], face[3], face[2], (short)0 });
 
                 // Convert quads
                 if (face[0] == 4)
                 {
                     triangles[faceIndex].Add(triangleCount++);
-                    faceVertices.Add(new[] { face[4], face[1], face[3], (short)0 });
+                    faceVertices.Add(new[] { face[4], face[3], face[1], (short)0 });
                 }
 
                 faceIndex++;
@@ -129,7 +130,7 @@ namespace MediaEngine.Exporters
                             foreach (var triangleIndex in Enumerable.Range(0, faces.Count))
                                 faceWriter.Write((ushort)triangleIndex);
                         }
-                    
+
                     var facesLength = (int)materialFaces.Length + (faces.Count * 8) + 8;
                     var meshLength = facesLength + (allVertices.Count * 20) + 22;
 

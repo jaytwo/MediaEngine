@@ -48,7 +48,9 @@ namespace MediaEngine.Unpackers
             var word = s.TrimEnd(_exemptions);
 
             if (_strings.TryGetValue(word, out var translation))
-                s = translation + s.Substring(word.Length);
+                s = translation + new string(s.Substring(word.Length)
+                    .Select(c => c >= '０' && c <= '９' ? (char)(c + '0' - '０') : c)
+                    .ToArray());
 
             return s;
         }
