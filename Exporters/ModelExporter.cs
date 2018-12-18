@@ -23,28 +23,28 @@ namespace MediaEngine.Exporters
                     var textureId = (int)group[ModelField.Texture];
                     var textureName = textureId == -1 ? new byte[0] : Encoding.UTF8.GetBytes($"..\\Texture\\{textureId}.bmp");
 
-                    writer.Write((ushort)0xAFFF); // EDIT_MATERIAL chunk
+                    writer.Write((ushort)ChunkType.MAT_ENTRY);
                     writer.Write(name.Length + textureName.Length + (textureId == -1 ? 61 : 74)); // chunk length
 
-                    writer.Write((ushort)0xA000); // MAT_NAME chunk
+                    writer.Write((ushort)ChunkType.MAT_NAME);
                     writer.Write(name.Length + 7); // chunk length
                     writer.Write(name); // material name
                     writer.Write((byte)0); // name terminator
 
-                    writer.Write((ushort)0xA010); // Ambient colour chunk
+                    writer.Write((ushort)ChunkType.MAT_AMBIENT);
                     writer.Write(24); // chunk length
 
                     var colour = (float[])group[ModelField.MaterialAmbient];
-                    writer.Write((ushort)0x0010); // RGB chunk
+                    writer.Write((ushort)ChunkType.COLOR_F);
                     writer.Write(18); // chunk length
                     writer.Write(colour[0]);
                     writer.Write(colour[1]);
                     writer.Write(colour[2]);
 
-                    writer.Write((ushort)0xA020); // Diffuse colour chunk
+                    writer.Write((ushort)ChunkType.MAT_DIFFUSE);
                     writer.Write(24); // chunk length
 
-                    writer.Write((ushort)0x0010); // RGB chunk
+                    writer.Write((ushort)ChunkType.COLOR_F);
                     writer.Write(18); // chunk length
                     writer.Write(colour[0]);
                     writer.Write(colour[1]);
@@ -52,10 +52,10 @@ namespace MediaEngine.Exporters
 
                     if (textureId != -1)
                     {
-                        writer.Write((ushort)0xA200); // Diffuse texture channel 0 chunk
+                        writer.Write((ushort)ChunkType.MAT_TEXMAP);
                         writer.Write(textureName.Length + 13); // chunk length
 
-                        writer.Write((ushort)0xA300); // Texture file name
+                        writer.Write((ushort)ChunkType.MAT_MAPNAME);
                         writer.Write(textureName.Length + 7); // chunk length
                         writer.Write(textureName); // texture file name
                         writer.Write((byte)0); // name terminator
@@ -67,14 +67,17 @@ namespace MediaEngine.Exporters
                 foreach (var group in groups)
                 {
                     var name = Encoding.UTF8.GetBytes(group[ModelField.GroupName].ToString());
-                    writer.Write((ushort)0xB010); // KEYF_OBJHIERARCH chunk
+
+                    writer.Write((ushort)ChunkType.OBJECT_NODE_TAG);
+                    writer.Write(19 + name.Length); // chunk length
+
+                    writer.Write((ushort)ChunkType.NODE_HDR);
                     writer.Write(13 + name.Length); // chunk length
-                    writer.Write(name); // material name
+                    writer.Write(name);
                     writer.Write((byte)0); // name terminator
                     writer.Write(0); // unknown 4 bytes
-                    writer.Write((ushort)(ushort.MaxValue)); // TODO: Hierarchy of object
+                    writer.Write(group == groups[0] ? ushort.MaxValue : (ushort)0); // TODO: Hierarchy of object
                 }
-
 
             var faceIndex = 0;
             short triangleCount = 0;
@@ -117,7 +120,7 @@ namespace MediaEngine.Exporters
                                     foreach (var triangleIndex in triangles[f])
                                         faces.Add(faceVertices[triangleIndex]);
 
-                            faceWriter.Write((ushort)0x4130); // TRI_MATERIAL chunk
+                            faceWriter.Write((ushort)ChunkType.MSH_MAT_GROUP);
                             faceWriter.Write(faces.Count * 2 + name.Length + 9); // chunk length
                             faceWriter.Write(name); // material name
                             faceWriter.Write((byte)0); // name terminator
@@ -130,15 +133,15 @@ namespace MediaEngine.Exporters
                     var facesLength = (int)materialFaces.Length + (faces.Count * 8) + 8;
                     var meshLength = facesLength + (allVertices.Count * 20) + 22;
 
-                    writer.Write((ushort)0x4000); // EDIT_OBJECT chunk
+                    writer.Write((ushort)ChunkType.NAMED_OBJECT);
                     writer.Write(meshLength + 7 + name.Length); // chunk length
                     writer.Write(name); // object name
                     writer.Write((byte)0); // name terminator
 
-                    writer.Write((ushort)0x4100); // OBJECT_TRIMESH chunk
+                    writer.Write((ushort)ChunkType.N_TRI_OBJECT);
                     writer.Write(meshLength); // chunk length
 
-                    writer.Write((ushort)0x4110); // TRI_VERTEXL chunk
+                    writer.Write((ushort)ChunkType.POINT_ARRAY);
                     writer.Write(allVertices.Count * 12 + 8); // chunk length
                     writer.Write((ushort)allVertices.Count); // total vertices
 
@@ -146,7 +149,7 @@ namespace MediaEngine.Exporters
                         foreach (var offset in vertex)
                             writer.Write(offset);
 
-                    writer.Write((ushort)0x4140); // TRI_MAPPINGCOORS chunk
+                    writer.Write((ushort)ChunkType.TEX_VERTS);
                     writer.Write(allVertices.Count * 8 + 8); // chunk length
                     writer.Write((ushort)allVertices.Count); // total vertices
 
@@ -176,7 +179,7 @@ namespace MediaEngine.Exporters
                         }
                     }
 
-                    writer.Write((ushort)0x4120); // TRI_FACEL1 chunk
+                    writer.Write((ushort)ChunkType.FACE_ARRAY);
                     writer.Write(facesLength); // chunk length
                     writer.Write((ushort)faces.Count); // total polygons
 
@@ -187,19 +190,16 @@ namespace MediaEngine.Exporters
                     writer.Write(materialFaces.ToArray());
                 }
 
-            destination.Write((ushort)0x4D4D); // MAIN3DS chunk
-            destination.Write((int)(objects.Length + materials.Length + hierarchies.Length + 24)); // chunk length
+            destination.Write((ushort)ChunkType.M3DMAGIC);
+            destination.Write((int)(objects.Length + materials.Length + hierarchies.Length + 18)); // chunk length
 
-            destination.Write((ushort)0x3D3D); // EDIT3DS chunk
+            destination.Write((ushort)ChunkType.MDATA);
             destination.Write((int)(objects.Length + materials.Length + 6)); // chunk length
             destination.Write(materials.ToArray());
 
             destination.Write(objects.ToArray());
 
-            destination.Write((ushort)0xB000); // KEYF3DS chunk
-            destination.Write((int)hierarchies.Length + 12); // chunk length
-
-            destination.Write((ushort)0xB002); // KEYF_OBJDES chunk
+            destination.Write((ushort)ChunkType.KFDATA);
             destination.Write((int)hierarchies.Length + 6); // chunk length
             destination.Write(hierarchies.ToArray());
         }
