@@ -43,6 +43,12 @@ namespace MediaEngine.Unpackers
             return Translate(s);
         }
 
+        public static string ReadString2(BinaryReader source)
+        {
+            var s = Encoding.GetEncoding(932).GetString(source.ReadBytes(source.ReadByte() + 3)).TrimStart('\0');
+            return Translator.Translate(s);
+        }
+
         public static string Translate(string s)
         {
             var word = s.TrimEnd(_exemptions);
