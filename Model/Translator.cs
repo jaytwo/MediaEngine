@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -15,20 +16,14 @@ namespace MediaEngine.Unpackers
             using (var keys = new StreamReader(File.OpenRead(keysPath)))
             using (var values = new StreamReader(File.OpenRead(valuesPath)))
                 while (!keys.EndOfStream && !values.EndOfStream)
-                    _strings.Add(keys.ReadLine(), values.ReadLine());
-        }
-
-        public static void Add(string key)
-        {
-            if (!_strings.ContainsKey(key))
-                _strings.Add(key, key);
+                    _strings[keys.ReadLine()] = values.ReadLine();
         }
 
         public static void Save(string keysPath)
         {
             using (var writer = new StreamWriter(File.OpenWrite(keysPath)))
                 foreach (var key in _strings.Keys
-                    .Select(k => new string(k.Except(_exemptions).ToArray()))
+                    .Select(k => k.Intersect(_exemptions).Any() ? new string(k.Except(_exemptions).ToArray()) : k)
                     .OrderBy(k => k)
                     .Distinct()
                     .Where(k => k.Any(c => c >= '\u303f')))
@@ -51,12 +46,14 @@ namespace MediaEngine.Unpackers
 
         public static string Translate(string s)
         {
-            var word = s.TrimEnd(_exemptions);
+            var word = s.TrimEnd(_exemptions).Normalize();
 
             if (_strings.TryGetValue(word, out var translation))
                 s = translation + new string(s.Substring(word.Length)
                     .Select(c => c >= '０' && c <= '９' ? (char)(c + '0' - '０') : c)
                     .ToArray());
+            else
+                _strings.Add(word, word);
 
             return s;
         }
