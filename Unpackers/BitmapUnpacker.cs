@@ -1,4 +1,8 @@
-﻿using System.IO;
+﻿using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Linq;
+using System.Text;
 
 namespace MediaEngine.Unpackers
 {
@@ -8,6 +12,7 @@ namespace MediaEngine.Unpackers
         Height = 17,
         BitsPerPixel = 18,
         Colours = 19,
+        Tranparent = 20,
         UnknownByte22 = 22,
         UnknownByte27 = 27,
         UnknownShort31 = 31,
@@ -23,6 +28,7 @@ namespace MediaEngine.Unpackers
     class BitmapUnpacker : Unpacker<BitmapField>
     {
         private byte[] _colours = new byte[0];
+        private byte[] _transparent = new byte[0];
 
         protected override void Unpack(BinaryReader source, BinaryWriter destination, BitmapField field)
         {
@@ -37,32 +43,51 @@ namespace MediaEngine.Unpackers
                     _colours = source.ReadBytes(_fieldValues[BitmapField.Colours] * 4);
                     break;
 
+                case BitmapField.Tranparent:
+                    _transparent = source.ReadBytes(4);
+                    break;
+
                 case BitmapField.BmpPixelData:
-                    // BMP header
-                    var rowBits = _fieldValues[BitmapField.Width] * _fieldValues[BitmapField.BitsPerPixel];
-                    if (rowBits % 32 != 0)
-                        rowBits = 32 + (32 * (rowBits / 32));
+                    using (var memoryStream = new MemoryStream())
+                    {
+                        using (var memoryWriter = new BinaryWriter(memoryStream, Encoding.Default, true))
+                        {
+                            // BMP header
+                            var rowBits = _fieldValues[BitmapField.Width] * _fieldValues[BitmapField.BitsPerPixel];
+                            if (rowBits % 32 != 0)
+                                rowBits = 32 + (32 * (rowBits / 32));
 
-                    var pixelsLength = rowBits * _fieldValues[BitmapField.Height] / 8;
-                    destination.Write((byte)0x42);
-                    destination.Write((byte)0x4D);
-                    destination.Write(14 + 40 + _colours.Length + pixelsLength);
-                    destination.Write(0);
-                    destination.Write(14 + 40 + _colours.Length);
+                            var pixelsLength = rowBits * _fieldValues[BitmapField.Height] / 8;
+                            memoryWriter.Write((byte)0x42);
+                            memoryWriter.Write((byte)0x4D);
+                            memoryWriter.Write(14 + 40 + _colours.Length + pixelsLength);
+                            memoryWriter.Write(0);
+                            memoryWriter.Write(14 + 40 + _colours.Length);
 
-                    // DIB header
-                    destination.Write(40);
-                    destination.Write(_fieldValues[BitmapField.Width]);
-                    destination.Write(_fieldValues[BitmapField.Height]);
-                    destination.Write((short)1);
-                    destination.Write((short)_fieldValues[BitmapField.BitsPerPixel]);
-                    destination.Write(new byte[16]);
-                    destination.Write(_fieldValues[BitmapField.Colours]);
-                    destination.Write(0);
+                            // DIB header
+                            memoryWriter.Write(40);
+                            memoryWriter.Write(_fieldValues[BitmapField.Width]);
+                            memoryWriter.Write(_fieldValues[BitmapField.Height]);
+                            memoryWriter.Write((short)1);
+                            memoryWriter.Write((short)_fieldValues[BitmapField.BitsPerPixel]);
+                            memoryWriter.Write(new byte[16]);
+                            memoryWriter.Write(_fieldValues[BitmapField.Colours]);
+                            memoryWriter.Write(0);
 
-                    // Pixels
-                    destination.Write(_colours);
-                    destination.Write(source.ReadBytes(pixelsLength));
+                            // Pixels
+                            memoryWriter.Write(_colours);
+                            memoryWriter.Write(source.ReadBytes(pixelsLength));
+                        }
+
+                        memoryStream.Position = 0;
+                        using (var bitmap = (Bitmap)Image.FromStream(memoryStream))
+                        {
+                            if (_transparent.Length == 4)
+                                bitmap.MakeTransparent(Color.FromArgb(_transparent[0], _transparent[1], _transparent[2]));
+
+                            bitmap.Save(destination.BaseStream, ImageFormat.Png);
+                        }
+                    }
                     break;
 
                 case BitmapField.BitsPerPixel:
