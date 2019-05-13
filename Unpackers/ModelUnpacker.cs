@@ -191,7 +191,7 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ModelField.GroupName:
-                    _group.Add(field, Translator.ReadString(source));
+                    _group.Add(field, _groups.Count + " " + Translator.ReadString(source));
                     break;
 
                 default:
