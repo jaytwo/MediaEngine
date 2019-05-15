@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 
 namespace MediaEngine.Exporters
@@ -108,7 +109,8 @@ namespace MediaEngine.Exporters
             using (var writer = new BinaryWriter(objects, Encoding.ASCII, true))
                 foreach (var i in objectIndices)
                 {
-                    var name = Encoding.UTF8.GetBytes(groups[i][ModelField.GroupName].ToString());
+                    var group = groups[i];
+                    var name = Encoding.UTF8.GetBytes(group[ModelField.GroupName].ToString());
 
                     var materialFaces = new MemoryStream();
                     var faces = faceVertices;
@@ -169,14 +171,34 @@ namespace MediaEngine.Exporters
                         var maxY = usedVertices.Max(v => v[1]);
                         var maxZ = usedVertices.Max(v => v[2]);
 
+                        var division = new Vector3(
+                            (float)group[ModelField.TextureDivisionU],
+                            (float)group[ModelField.TextureDivisionV],
+                            1);
+
+                        var position = new Vector3(
+                            (float)group[ModelField.TexturePositionU],
+                            (float)group[ModelField.TexturePositionV],
+                            0);
+
+                        var rotation = Matrix4x4.CreateFromYawPitchRoll(
+                            -(float)group[ModelField.TextureRotateY],
+                            -(float)group[ModelField.TextureRotateX],
+                            -(float)group[ModelField.TextureRotateZ]);
+
                         foreach (var v in allVertices)
                         {
-                            if ((float)groups[i][ModelField.UnknownFloat165] != 0f)
-                                writer.Write((v[2] - minZ) / (maxZ - minZ));
-                            else
-                                writer.Write((v[0] - minX) / (maxX - minX));
+                            var vector = new Vector3(
+                                (v[0] - minX) / (maxX - minX),
+                                (v[1] - minY) / (maxY - minY),
+                                (v[2] - minZ) / (maxZ - minZ));
 
-                            writer.Write((v[1] - minY) / (maxY - minY));
+                            vector = Vector3.Transform(vector, rotation);
+                            vector *= division;
+                            vector -= position;
+
+                            writer.Write(vector.X);
+                            writer.Write(vector.Y);
                         }
                     }
 

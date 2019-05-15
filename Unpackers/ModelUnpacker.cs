@@ -34,13 +34,13 @@ namespace MediaEngine.Unpackers
         UnknownShort149 = 149,
         UnknownShort150 = 150,
         UnknownShort151 = 151,
-        UnknownFloat160 = 160,
-        UnknownFloat161 = 161,
-        UnknownFloat162 = 162,
-        UnknownFloat163 = 163,
-        UnknownFloat164 = 164,
-        UnknownFloat165 = 165,
-        UnknownInt166 = 166,
+        TextureDivisionU = 160,
+        TextureDivisionV = 161,
+        TexturePositionU = 162,
+        TexturePositionV = 163,
+        TextureRotateX = 164,
+        TextureRotateY = 165,
+        TextureRotateZ = 166,
         UnknownInt176 = 176,
         GroupName = 177,
         UnknownInt178 = 178,
@@ -161,7 +161,6 @@ namespace MediaEngine.Unpackers
                 case ModelField.UnknownInt129:
                 case ModelField.UnknownInt130:
                 case ModelField.UnknownInt131:
-                case ModelField.UnknownInt166:
                 case ModelField.UnknownInt176:
                 case ModelField.UnknownInt178:
                 case ModelField.UnknownInt192:
@@ -179,12 +178,13 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ModelField.UnknownFloat148:
-                case ModelField.UnknownFloat160:
-                case ModelField.UnknownFloat161:
-                case ModelField.UnknownFloat162:
-                case ModelField.UnknownFloat163:
-                case ModelField.UnknownFloat164:
-                case ModelField.UnknownFloat165:
+                case ModelField.TextureDivisionU:
+                case ModelField.TextureDivisionV:
+                case ModelField.TexturePositionU:
+                case ModelField.TexturePositionV:
+                case ModelField.TextureRotateX:
+                case ModelField.TextureRotateY:
+                case ModelField.TextureRotateZ:
                 case ModelField.UnknownFloat196:
                 case ModelField.UnknownFloat197:
                     _group.Add(field, source.ReadSingle());
