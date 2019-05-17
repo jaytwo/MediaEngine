@@ -22,7 +22,7 @@ namespace MediaEngine.Exporters
                     var name = Encoding.UTF8.GetBytes(group[ModelField.GroupName].ToString());
 
                     var textureId = (int)group[ModelField.Texture];
-                    var textureName = textureId == -1 ? new byte[0] : Encoding.UTF8.GetBytes($"..\\Texture\\{textureId}.bmp");
+                    var textureName = textureId == -1 ? new byte[0] : Encoding.UTF8.GetBytes($"..\\Texture\\{textureId}.png");
 
                     writer.Write((ushort)ChunkType.MAT_ENTRY);
                     writer.Write(name.Length + textureName.Length + (textureId == -1 ? 61 : 74)); // chunk length
@@ -171,6 +171,9 @@ namespace MediaEngine.Exporters
                         var maxY = usedVertices.Max(v => v[1]);
                         var maxZ = usedVertices.Max(v => v[2]);
 
+                        var objectMin = new Vector3(minX, minY, minZ);
+                        var objectScale = new Vector3(maxX - minX, maxY - minY, maxZ - minZ);
+
                         var division = new Vector3(
                             (float)group[ModelField.TextureDivisionU],
                             (float)group[ModelField.TextureDivisionV],
@@ -188,10 +191,9 @@ namespace MediaEngine.Exporters
 
                         foreach (var v in allVertices)
                         {
-                            var vector = new Vector3(
-                                (v[0] - minX) / (maxX - minX),
-                                (v[1] - minY) / (maxY - minY),
-                                (v[2] - minZ) / (maxZ - minZ));
+                            var vector = new Vector3(v[0], v[1], v[2]);
+                            vector -= objectMin;
+                            vector /= objectScale;
 
                             vector = Vector3.Transform(vector, rotation);
                             vector *= division;

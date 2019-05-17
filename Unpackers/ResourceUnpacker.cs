@@ -16,7 +16,7 @@ namespace MediaEngine.Unpackers
                 yield return resource;
 
                 // Force textures to something predictable because we unpack them after models refer to them
-                var fileName = resource.ResourceType == ResourceType.Texture ? ".bmp" :
+                var fileName = resource.ResourceType == ResourceType.Texture ? ".png" :
                     ("-" + resource.Name + Path.GetExtension(resource.Source));
 
                 var name = Path.Combine(path, resource.ResourceType.ToString(), resource.Index + fileName);
