@@ -13,6 +13,7 @@ namespace MediaEngine.Unpackers
         IndexCount = 18,
         UnknownMarker19 = 19,
         UnknownArray22 = 22,
+        UnknownInt23 = 23,
         Vertices = 32,
         FacesDouble = 33,
         UnknownMarker34 = 34,
@@ -34,6 +35,8 @@ namespace MediaEngine.Unpackers
         UnknownShort149 = 149,
         UnknownShort150 = 150,
         UnknownShort151 = 151,
+        UnknownInt152 = 152,
+        UnknownInt154 = 154,
         TextureDivisionU = 160,
         TextureDivisionV = 161,
         TexturePositionU = 162,
@@ -78,34 +81,34 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ModelField.UnknownShort150:
-                    _fieldValues.Add(field, source.ReadInt16());
+                    _group.Add(field, source.ReadInt16());
                     break;
 
                 case ModelField.UnknownArray22:
-                    var unknown22 = source.ReadBytes(_fieldValues[ModelField.VertexCount]);
-                    _fieldValues.Add(field, unknown22.Count());
+                    var unknown22 = source.ReadBytes((int)_group[ModelField.VertexCount]);
+                    _group.Add(field, unknown22.Count());
                     break;
 
                 case ModelField.Vertices:
-                    _vertices.AddRange(Enumerable.Range(0, _fieldValues[ModelField.VertexCount])
+                    _vertices.AddRange(Enumerable.Range(0, (int)_group[ModelField.VertexCount])
                         .Select(i => new[] { source.ReadSingle(), source.ReadSingle(), source.ReadSingle() })
                         .ToList());
                     break;
 
                 case ModelField.FacesSingle:
-                    _fieldValues[field] = source.ReadByte();
-                    var indices = source.ReadBytes(_fieldValues[ModelField.IndexCount]);
+                    _group[field] = source.ReadByte();
+                    var indices = source.ReadBytes((int)_group[ModelField.IndexCount]);
                     UnpackFaces(indices.Select(b => (short)b).ToArray());
                     break;
 
                 case ModelField.FacesDouble:
-                    UnpackFaces(Enumerable.Range(0, _fieldValues[ModelField.IndexCount])
+                    UnpackFaces(Enumerable.Range(0, (int)_group[ModelField.IndexCount])
                         .Select(i => source.ReadInt16()).ToArray());
 
-                    if (_fieldValues[ModelField.IndexCount] != 0)
+                    if ((int)_group[ModelField.IndexCount] != 0)
                     {
                         if (source.ReadByte() == 34)
-                            _faceGroups = Enumerable.Range(0, _fieldValues[ModelField.FaceCount])
+                            _faceGroups = Enumerable.Range(0, (int)_group[ModelField.FaceCount])
                                 .Select(i => source.ReadInt16())
                                 .ToArray();
                         else
@@ -115,7 +118,7 @@ namespace MediaEngine.Unpackers
 
                 case ModelField.FaceGroups:
                     var bitsPerItem = source.ReadByte();
-                    var byteCount = _fieldValues[ModelField.FaceCount] * bitsPerItem / 32.0;
+                    var byteCount = (int)_group[ModelField.FaceCount] * bitsPerItem / 32.0;
                     var faceGroups = source.ReadBytes((int)Math.Ceiling(byteCount));
                     if (bitsPerItem == 16)
                         faceGroups = faceGroups.SelectMany(b => new[]
@@ -155,12 +158,18 @@ namespace MediaEngine.Unpackers
                     _group.Add(field, source.ReadInt16());
                     break;
 
+                case ModelField.FaceCount:
+                case ModelField.IndexCount:
+                case ModelField.VertexCount:
+                case ModelField.UnknownInt23:
                 case ModelField.UnknownInt112:
                 case ModelField.UnknownInt114:
                 case ModelField.Texture:
                 case ModelField.UnknownInt129:
                 case ModelField.UnknownInt130:
                 case ModelField.UnknownInt131:
+                case ModelField.UnknownInt152:
+                case ModelField.UnknownInt154:
                 case ModelField.UnknownInt176:
                 case ModelField.UnknownInt178:
                 case ModelField.UnknownInt192:
@@ -195,8 +204,7 @@ namespace MediaEngine.Unpackers
                     break;
 
                 default:
-                    _fieldValues.Add(field, source.ReadInt32());
-                    break;
+                    throw new NotImplementedException();
             }
         }
 

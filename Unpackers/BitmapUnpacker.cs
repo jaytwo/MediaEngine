@@ -147,8 +147,10 @@ namespace MediaEngine.Unpackers
                                 index += 16;
                         }
                 }
-                else if (_transparent.Length == 4)
+                else if (_transparent[3] == 0)
+                {
                     bitmap.MakeTransparent(Color.FromArgb(_transparent[0], _transparent[1], _transparent[2]));
+                }
 
                 bitmap.Save(destination.BaseStream, ImageFormat.Png);
             }

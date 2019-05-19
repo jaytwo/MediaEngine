@@ -25,7 +25,7 @@ namespace MediaEngine.Exporters
                     var textureName = textureId == -1 ? new byte[0] : Encoding.UTF8.GetBytes($"..\\Texture\\{textureId}.png");
 
                     writer.Write((ushort)ChunkType.MAT_ENTRY);
-                    writer.Write(name.Length + textureName.Length + (textureId == -1 ? 61 : 74)); // chunk length
+                    writer.Write(name.Length + textureName.Length + 74); // chunk length
 
                     writer.Write((ushort)ChunkType.MAT_NAME);
                     writer.Write(name.Length + 7); // chunk length
@@ -51,16 +51,13 @@ namespace MediaEngine.Exporters
                     writer.Write(colour[1]);
                     writer.Write(colour[2]);
 
-                    if (textureId != -1)
-                    {
-                        writer.Write((ushort)ChunkType.MAT_TEXMAP);
-                        writer.Write(textureName.Length + 13); // chunk length
+                    writer.Write((ushort)ChunkType.MAT_TEXMAP);
+                    writer.Write(textureName.Length + 13); // chunk length
 
-                        writer.Write((ushort)ChunkType.MAT_MAPNAME);
-                        writer.Write(textureName.Length + 7); // chunk length
-                        writer.Write(textureName); // texture file name
-                        writer.Write((byte)0); // name terminator
-                    }
+                    writer.Write((ushort)ChunkType.MAT_MAPNAME);
+                    writer.Write(textureName.Length + 7); // chunk length
+                    writer.Write(textureName); // texture file name
+                    writer.Write((byte)0); // name terminator
                 }
 
             var hierarchies = new MemoryStream();
@@ -133,8 +130,12 @@ namespace MediaEngine.Exporters
                                 faceWriter.Write((ushort)triangleIndex);
                         }
 
+                    var textureId = (int)group[ModelField.Texture];
+                    var useTexVerts = textureId != -1 && faces.Count != 0;
+
+                    var texVertsLength = useTexVerts ? (allVertices.Count * 8 + 8) : 0;
                     var facesLength = (int)materialFaces.Length + (faces.Count * 8) + 8;
-                    var meshLength = facesLength + (allVertices.Count * 20) + 22;
+                    var meshLength = texVertsLength + facesLength + (allVertices.Count * 12) + 14;
 
                     writer.Write((ushort)ChunkType.NAMED_OBJECT);
                     writer.Write(meshLength + 7 + name.Length); // chunk length
@@ -152,12 +153,12 @@ namespace MediaEngine.Exporters
                         foreach (var offset in vertex)
                             writer.Write(offset);
 
-                    writer.Write((ushort)ChunkType.TEX_VERTS);
-                    writer.Write(allVertices.Count * 8 + 8); // chunk length
-                    writer.Write((ushort)allVertices.Count); // total vertices
-
-                    if (faces.Count != 0)
+                    if (useTexVerts)
                     {
+                        writer.Write((ushort)ChunkType.TEX_VERTS);
+                        writer.Write(texVertsLength); // chunk length
+                        writer.Write((ushort)allVertices.Count); // total vertices
+
                         var usedVertices = faces
                             .SelectMany(f => f.Take(3))
                             .Distinct()
@@ -174,6 +175,13 @@ namespace MediaEngine.Exporters
                         var objectMin = new Vector3(minX, minY, minZ);
                         var objectScale = new Vector3(maxX - minX, maxY - minY, maxZ - minZ);
 
+                        if (objectScale.X < 0.001f)
+                            objectScale.X = 1;
+                        if (objectScale.Y < 0.001f)
+                            objectScale.Y = 1;
+                        if (objectScale.Z < 0.001f)
+                            objectScale.Z = 1;
+
                         var division = new Vector3(
                             (float)group[ModelField.TextureDivisionU],
                             (float)group[ModelField.TextureDivisionV],
@@ -184,10 +192,12 @@ namespace MediaEngine.Exporters
                             (float)group[ModelField.TexturePositionV],
                             0);
 
-                        var rotation = Matrix4x4.CreateFromYawPitchRoll(
-                            -(float)group[ModelField.TextureRotateY],
-                            -(float)group[ModelField.TextureRotateX],
-                            -(float)group[ModelField.TextureRotateZ]);
+                        var quaternionX = Quaternion.CreateFromYawPitchRoll(0, -(float)group[ModelField.TextureRotateX], 0);
+                        var quaternionY = Quaternion.CreateFromYawPitchRoll(-(float)group[ModelField.TextureRotateY], 0, 0);
+                        var quaternionZ = Quaternion.CreateFromYawPitchRoll(0, 0, -(float)group[ModelField.TextureRotateZ]);
+
+                        var quaternion = Quaternion.Multiply(quaternionX, quaternionY);
+                        var rotation = Matrix4x4.CreateFromQuaternion(Quaternion.Multiply(quaternion, quaternionZ));
 
                         foreach (var v in allVertices)
                         {
