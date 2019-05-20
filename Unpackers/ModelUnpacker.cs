@@ -26,7 +26,7 @@ namespace MediaEngine.Unpackers
         Texture = 128,
         UnknownInt129 = 129,
         UnknownInt130 = 130,
-        UnknownInt131 = 131,
+        TextureGroup = 131,
         MaterialPower = 144,
         MaterialAmbient = 145,
         MaterialEmissive = 146,
@@ -167,7 +167,7 @@ namespace MediaEngine.Unpackers
                 case ModelField.Texture:
                 case ModelField.UnknownInt129:
                 case ModelField.UnknownInt130:
-                case ModelField.UnknownInt131:
+                case ModelField.TextureGroup:
                 case ModelField.UnknownInt152:
                 case ModelField.UnknownInt154:
                 case ModelField.UnknownInt176:

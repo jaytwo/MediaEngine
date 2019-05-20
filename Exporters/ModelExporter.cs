@@ -16,16 +16,26 @@ namespace MediaEngine.Exporters
         public static void Export(List<Group> groups, List<float[]> allVertices, List<short[]> allFaces, short[] faceGroupIds, BinaryWriter destination)
         {
             var materials = new MemoryStream();
+            var materialGroups = new Dictionary<int, Group>();
+
             using (var writer = new BinaryWriter(materials, Encoding.ASCII, true))
-                foreach (var group in groups)
+                for (int i = 0; i < groups.Count; i++)
                 {
+                    var group = groups[i];
                     var name = Encoding.UTF8.GetBytes(group[ModelField.GroupName].ToString());
+
+                    var groupId = (int)group[ModelField.TextureGroup];
+                    if (groupId != -1)
+                        if (materialGroups.TryGetValue(groupId, out var referenceGroup))
+                            group = referenceGroup;
+                        else
+                            materialGroups.Add(groupId, group);
 
                     var textureId = (int)group[ModelField.Texture];
                     var textureName = textureId == -1 ? new byte[0] : Encoding.UTF8.GetBytes($"..\\Texture\\{textureId}.png");
 
                     writer.Write((ushort)ChunkType.MAT_ENTRY);
-                    writer.Write(name.Length + textureName.Length + 74); // chunk length
+                    writer.Write(name.Length + textureName.Length + 88); // chunk length
 
                     writer.Write((ushort)ChunkType.MAT_NAME);
                     writer.Write(name.Length + 7); // chunk length
@@ -36,6 +46,8 @@ namespace MediaEngine.Exporters
                     writer.Write(24); // chunk length
 
                     var colour = (float[])group[ModelField.MaterialAmbient];
+                    var transparency = (1.0f - colour[3]) * 100;
+
                     writer.Write((ushort)ChunkType.COLOR_F);
                     writer.Write(18); // chunk length
                     writer.Write(colour[0]);
@@ -50,6 +62,13 @@ namespace MediaEngine.Exporters
                     writer.Write(colour[0]);
                     writer.Write(colour[1]);
                     writer.Write(colour[2]);
+
+                    writer.Write((ushort)ChunkType.MAT_TRANSPARENCY);
+                    writer.Write(14); // chunk length
+
+                    writer.Write((ushort)ChunkType.INT_PERCENTAGE);
+                    writer.Write(8); // chunk length
+                    writer.Write((ushort)transparency);
 
                     writer.Write((ushort)ChunkType.MAT_TEXMAP);
                     writer.Write(textureName.Length + 13); // chunk length
