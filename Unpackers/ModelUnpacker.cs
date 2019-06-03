@@ -60,7 +60,10 @@ namespace MediaEngine.Unpackers
         UnknownInt202 = 202,
     }
 
-    class Group : Dictionary<ModelField, object> { }
+    class Group : Dictionary<ModelField, object>
+    {
+        public List<Group> TextureGroup { get; set; }
+    }
 
     class ModelUnpacker : Unpacker<ModelField>
     {
