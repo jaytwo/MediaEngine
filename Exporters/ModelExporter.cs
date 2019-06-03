@@ -8,137 +8,47 @@ using System.Text;
 namespace MediaEngine.Exporters
 {
     /// <summary>
-    /// 3DS files: http://www.martinreddy.net/gfx/3d/3DS.spec
-    /// Materials: http://www.martinreddy.net/gfx/3d/MLI.spec
+    /// See http://www.martinreddy.net/gfx/3d/3DS.spec
     /// </summary>
     static class ModelExporter
     {
         public static void Export(List<Group> groups, List<float[]> allVertices, List<short[]> allFaces, short[] faceGroupIds, BinaryWriter destination)
         {
-            var materials = new MemoryStream();
-            var materialGroups = new Dictionary<int, Group>();
-
-            using (var writer = new BinaryWriter(materials, Encoding.ASCII, true))
-                for (int i = 0; i < groups.Count; i++)
-                {
-                    var group = groups[i];
-                    var name = Encoding.UTF8.GetBytes(group[ModelField.GroupName].ToString());
-
-                    var groupId = (int)group[ModelField.TextureGroup];
-                    if (groupId != -1)
-                        if (materialGroups.TryGetValue(groupId, out var referenceGroup))
-                            group = referenceGroup;
-                        else
-                            materialGroups.Add(groupId, group);
-
-                    var textureId = (int)group[ModelField.Texture];
-                    var textureName = textureId == -1 ? new byte[0] : Encoding.UTF8.GetBytes($"..\\Texture\\{textureId}.png");
-
-                    writer.Write((ushort)ChunkType.MAT_ENTRY);
-                    writer.Write(name.Length + textureName.Length + 88); // chunk length
-
-                    writer.Write((ushort)ChunkType.MAT_NAME);
-                    writer.Write(name.Length + 7); // chunk length
-                    writer.Write(name); // material name
-                    writer.Write((byte)0); // name terminator
-
-                    writer.Write((ushort)ChunkType.MAT_AMBIENT);
-                    writer.Write(24); // chunk length
-
-                    var colour = (float[])group[ModelField.MaterialAmbient];
-                    var transparency = (1.0f - colour[3]) * 100;
-
-                    writer.Write((ushort)ChunkType.COLOR_F);
-                    writer.Write(18); // chunk length
-                    writer.Write(colour[0]);
-                    writer.Write(colour[1]);
-                    writer.Write(colour[2]);
-
-                    writer.Write((ushort)ChunkType.MAT_DIFFUSE);
-                    writer.Write(24); // chunk length
-
-                    writer.Write((ushort)ChunkType.COLOR_F);
-                    writer.Write(18); // chunk length
-                    writer.Write(colour[0]);
-                    writer.Write(colour[1]);
-                    writer.Write(colour[2]);
-
-                    writer.Write((ushort)ChunkType.MAT_TRANSPARENCY);
-                    writer.Write(14); // chunk length
-
-                    writer.Write((ushort)ChunkType.INT_PERCENTAGE);
-                    writer.Write(8); // chunk length
-                    writer.Write((ushort)transparency);
-
-                    writer.Write((ushort)ChunkType.MAT_TEXMAP);
-                    writer.Write(textureName.Length + 13); // chunk length
-
-                    writer.Write((ushort)ChunkType.MAT_MAPNAME);
-                    writer.Write(textureName.Length + 7); // chunk length
-                    writer.Write(textureName); // texture file name
-                    writer.Write((byte)0); // name terminator
-                }
-
-            var hierarchies = new MemoryStream();
-            using (var writer = new BinaryWriter(hierarchies, Encoding.ASCII, true))
-                foreach (var group in groups)
-                {
-                    var name = Encoding.UTF8.GetBytes(group[ModelField.GroupName].ToString());
-
-                    writer.Write((ushort)ChunkType.OBJECT_NODE_TAG);
-                    writer.Write(19 + name.Length); // chunk length
-
-                    writer.Write((ushort)ChunkType.NODE_HDR);
-                    writer.Write(13 + name.Length); // chunk length
-                    writer.Write(name);
-                    writer.Write((byte)0); // name terminator
-                    writer.Write(0); // unknown 4 bytes
-                    writer.Write(group == groups[0] ? ushort.MaxValue : (ushort)0); // TODO: Hierarchy of object
-                }
-
-            var faceIndex = 0;
-            short triangleCount = 0;
-            var triangles = new List<short>[allFaces.Count];
-            var faceVertices = new List<short[]>();
-            
-            foreach (var face in allFaces)
+            var textureGroups = new Dictionary<int, List<Group>>();
+            foreach (var group in groups)
             {
-                // Reverse winding direction
-                triangles[faceIndex] = new List<short>(new[] { triangleCount++ });
-                faceVertices.Add(new[] { face[1], face[3], face[2], (short)0 });
-
-                // Convert quads
-                if (face[0] == 4)
+                var groupId = (int)group[ModelField.TextureGroup];
+                if (groupId == -1 || !textureGroups.TryGetValue(groupId, out var textureGroup))
                 {
-                    triangles[faceIndex].Add(triangleCount++);
-                    faceVertices.Add(new[] { face[4], face[3], face[1], (short)0 });
+                    textureGroup = new List<Group>();
+                    if (groupId != -1)
+                        textureGroups.Add(groupId, textureGroup);
                 }
 
-                faceIndex++;
+                textureGroup.Add(group);
+                group.TextureGroup = textureGroup;
             }
 
+            var objectIndices = (faceGroupIds == null ? Enumerable.Range(0, groups.Count) :
+            faceGroupIds.Distinct().Select(b => (int)b)).ToArray();
+
+            var materials = MaterialExporter.Export(groups);
+            var hierarchies = HierarchyExporter.Export(groups);
+            var facesByObject = TriangleExporter.Export(groups, allFaces, faceGroupIds, objectIndices);
+
             var objects = new MemoryStream();
-            var objectIndices = faceGroupIds == null ?
-                Enumerable.Range(0, groups.Count) :
-                faceGroupIds.Distinct().Select(b => (int)b).ToArray();
 
             using (var writer = new BinaryWriter(objects, Encoding.ASCII, true))
                 foreach (var i in objectIndices)
                 {
                     var group = groups[i];
                     var name = Encoding.UTF8.GetBytes(group[ModelField.GroupName].ToString());
-
                     var materialFaces = new MemoryStream();
-                    var faces = faceVertices;
+                    var faces = facesByObject[i];
+
                     if (faceGroupIds != null)
                         using (var faceWriter = new BinaryWriter(materialFaces, Encoding.ASCII, true))
                         {
-                            faces = new List<short[]>();
-                            for (short f = 0; f < faceGroupIds.Length; f++)
-                                if (faceGroupIds[f] == i)
-                                    foreach (var triangleIndex in triangles[f])
-                                        faces.Add(faceVertices[triangleIndex]);
-
                             faceWriter.Write((ushort)ChunkType.MSH_MAT_GROUP);
                             faceWriter.Write(faces.Count * 2 + name.Length + 9); // chunk length
                             faceWriter.Write(name); // material name
@@ -149,9 +59,7 @@ namespace MediaEngine.Exporters
                                 faceWriter.Write((ushort)triangleIndex);
                         }
 
-                    var textureId = (int)group[ModelField.Texture];
-                    var useTexVerts = textureId != -1 && faces.Count != 0;
-
+                    var useTexVerts = faces.Count != 0;
                     var texVertsLength = useTexVerts ? (allVertices.Count * 8 + 8) : 0;
                     var facesLength = (int)materialFaces.Length + (faces.Count * 8) + 8;
                     var meshLength = texVertsLength + facesLength + (allVertices.Count * 12) + 14;
@@ -178,7 +86,9 @@ namespace MediaEngine.Exporters
                         writer.Write(texVertsLength); // chunk length
                         writer.Write((ushort)allVertices.Count); // total vertices
 
-                        var usedVertices = faces
+                        var usedVertices = group.TextureGroup
+                            .Select(g => groups.IndexOf(g))
+                            .SelectMany(g => facesByObject[g])
                             .SelectMany(f => f.Take(3))
                             .Distinct()
                             .Select(v => allVertices[v])
