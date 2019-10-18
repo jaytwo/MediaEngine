@@ -39,9 +39,11 @@ namespace MediaEngine.Unpackers
 
                 case TrackField.UnknownByte32:
                     var unknownByte32 = source.ReadByte();
+                    value = unknownByte32.ToString();
                     if (unknownByte32 != 1 || _fieldValues.ContainsKey(field))
                     {
-                        while (source.ReadByte() != 48) { }
+                        while ((unknownByte32 = source.ReadByte()) != 48)
+                            value += ", " + unknownByte32.ToString();
                         source.BaseStream.Position--;
                     }
                     _fieldValues[field] = unknownByte32;
@@ -54,24 +56,33 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case TrackField.UnknownArray48:
-                    var unknown48 = new List<byte>();
+                    List<byte> unknown48bytes = null;
+                    string unknown48string = null;
                     if (_fieldValues.Count == 0)
                     {
                         var scriptBytes = source.ReadBytes(source.ReadInt32());
-                        unknown48 = scriptBytes.ToList();
+                        unknown48bytes = scriptBytes.ToList();
                         WriteScript(destination, scriptBytes);
+                    }
+                    else if (_fieldValues.TryGetValue(TrackField.Type, out var resourceType) &&
+                        TrackItemUnpacker.CanUnpack((ResourceType)resourceType))
+                    {
+                        source.BaseStream.Position--;
+                        unknown48bytes = null;
+                        unknown48string = TrackItemUnpacker.Unpack(source);
                     }
                     else
                     {
-                        unknown48.Add(48);
+                        unknown48bytes = new List<byte>();
+                        unknown48bytes.Add(48);
                         while (true)
                         {
                             try
                             {
                                 byte b1 = source.ReadByte();
-                                if (b1 == 50 && unknown48.Count == 4)
+                                if (b1 == 50 && unknown48bytes.Count == 4)
                                     break;
-                                if (b1 == 35 && unknown48.Last() == 255)
+                                if (b1 == 35 && unknown48bytes.Last() == 255)
                                 {
                                     var end48 = source.ReadInt32();
                                     source.BaseStream.Position -= 4;
@@ -79,20 +90,19 @@ namespace MediaEngine.Unpackers
                                     if (end48 == 0)
                                         break;
                                 }
-                                unknown48.Add(b1);
+                                unknown48bytes.Add(b1);
                             }
                             catch (EndOfStreamException)
                             {
                                 break;
                             }
                         }
-                        source.BaseStream.Position--;
                     }
 
-                    _fieldValues[field] = unknown48.Count;
-                    value = unknown48.Count.ToString();
+                    _fieldValues[field] = unknown48bytes?.Count ?? unknown48string.Length;
+                    value = _fieldValues[field].ToString();
 
-                    WriteArray(destination, field, unknown48.ToArray());
+                    WriteArray(destination, field, unknown48bytes?.ToArray(), unknown48string);
                     value += " (in " + destination.BaseStream.Position + ".bin)";
                     break;
 
