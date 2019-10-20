@@ -69,7 +69,7 @@ namespace MediaEngine.Unpackers
                     {
                         source.BaseStream.Position--;
                         unknown48bytes = null;
-                        unknown48string = TrackItemUnpacker.Unpack(source);
+                        unknown48string = TrackItemUnpacker.Unpack(source, (ResourceType)resourceType);
                     }
                     else
                     {

@@ -10,9 +10,12 @@ namespace MediaEngine.Unpackers
         {
             switch (resourceType)
             {
+                case ResourceType.Bitmap:
                 case ResourceType.Camera:
                 case ResourceType.Ear:
+                case ResourceType.Light:
                 case ResourceType.Model:
+                case ResourceType.Movie:
                     return true;
 
                 default:
@@ -20,11 +23,23 @@ namespace MediaEngine.Unpackers
             }
         }
 
-        public static string Unpack(BinaryReader source)
+        public static string Unpack(BinaryReader source, ResourceType resourceType)
         {
+            byte section = 47;
             var destination = new StringBuilder();
             var firstObjRef = new int?();
-            byte section = 47;
+            var emptyObjRef = 0;
+
+            switch (resourceType)
+            {
+                case ResourceType.Bitmap:
+                    emptyObjRef = 1;
+                    break;
+
+                case ResourceType.Movie:
+                    emptyObjRef = -1;
+                    break;
+            }
 
             while (source.BaseStream.Position < source.BaseStream.Length - 1)
             {
@@ -37,7 +52,7 @@ namespace MediaEngine.Unpackers
                     var nextByte = source.ReadByte();
                     source.BaseStream.Position--;
 
-                    if (firstObjRef == null || firstObjRef == nextByte || firstObjRef == 0)
+                    if (firstObjRef == null || firstObjRef == nextByte || firstObjRef == emptyObjRef)
                     {
                         section = (byte)objRef;
                         destination.AppendLine($"Section {section}");
@@ -55,7 +70,7 @@ namespace MediaEngine.Unpackers
                 if (firstObjRef == null)
                     firstObjRef = objRef;
 
-                var length = firstObjRef == 0 ? 0 : source.ReadByte();
+                var length = firstObjRef == emptyObjRef ? 0 : source.ReadByte();
                 var content = Enumerable.Range(0, length * 3)
                     .Select(i => source.ReadSingle())
                     .ToArray();
