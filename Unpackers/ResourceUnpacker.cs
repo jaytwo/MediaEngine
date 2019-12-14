@@ -8,7 +8,8 @@ namespace MediaEngine.Unpackers
     {
         public static IEnumerable<Resource> Unpack(BinaryReader source, string path)
         {
-            source.ReadByte();
+            if (source.ReadByte() == (byte)ResourceType.Header)
+                source.BaseStream.Position--;
 
             while (true)
             {
@@ -29,6 +30,10 @@ namespace MediaEngine.Unpackers
                     {
                         switch (resource.ResourceType)
                         {
+                            case ResourceType.Header:
+                                new HeaderUnpacker().Unpack(source, writer);
+                                break;
+
                             case ResourceType.Model:
                                 new ModelUnpacker().Unpack(source, writer);
                                 break;

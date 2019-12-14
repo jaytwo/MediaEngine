@@ -26,6 +26,16 @@ namespace MediaEngine
                     case ".LCL":
                         Inflater.Inflate(dialog.FileName);
                         break;
+
+                    default:
+                        var assetsPath = Path.ChangeExtension(dialog.FileName, null) + " assets";
+                        if (Directory.Exists(assetsPath))
+                            foreach (var file in Directory.EnumerateFiles(assetsPath, "*", SearchOption.AllDirectories))
+                                File.Delete(file);
+                        else
+                            Directory.CreateDirectory(assetsPath);
+
+                        break;
                 }
             }
 

@@ -21,7 +21,7 @@ namespace MediaEngine.Unpackers
                     var lengthBytes = reader.ReadBytes(4).Select(b => (uint)b).ToArray();
                     var length = lengthBytes[1] | (lengthBytes[2] << 8) | (lengthBytes[3] << 16) | ((lengthBytes[0] & 0x7F) << 24);
 
-                    using (var output = File.Create(Path.ChangeExtension(path, null) + " " + i + Path.GetExtension(path) + "u"))
+                    using (var output = File.Create(Path.ChangeExtension(path, null) + " " + headerType + Path.GetExtension(path) + "u"))
                     using (var destination = new BinaryWriter(output))
                     using (var deflate = new ZlibStream(stream, CompressionMode.Decompress, true))
                     using (var source = new BinaryReader(deflate))

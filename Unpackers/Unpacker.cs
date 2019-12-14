@@ -12,7 +12,7 @@ namespace MediaEngine.Unpackers
 
         protected virtual bool OnFinish(BinaryReader source, BinaryWriter destination) { return true; }
 
-        public void Unpack(BinaryReader source, BinaryWriter destination)
+        public virtual void Unpack(BinaryReader source, BinaryWriter destination)
         {
             _fieldValues.Clear();
             source.ReadByte(); // ignored
