@@ -1,6 +1,7 @@
 ﻿using MediaEngine.Unpackers;
 using Microsoft.Win32;
 using System.IO;
+using System.Linq;
 using System.Windows;
 
 namespace MediaEngine
@@ -34,6 +35,13 @@ namespace MediaEngine
                                 File.Delete(file);
                         else
                             Directory.CreateDirectory(assetsPath);
+
+                        using (var reader = new BinaryReader(File.OpenRead(dialog.FileName)))
+                        {
+                            var casts = ResourceUnpacker.Unpack(reader, assetsPath).ToArray();
+
+                            Translator.Save(Path.Combine(assetsPath, "TranslationKeys.txt"));
+                        }
 
                         break;
                 }

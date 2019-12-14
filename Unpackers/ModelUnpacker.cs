@@ -12,6 +12,7 @@ namespace MediaEngine.Unpackers
         FaceCount = 17,
         IndexCount = 18,
         UnknownMarker19 = 19,
+        UnknownInt21 = 21,
         UnknownArray22 = 22,
         UnknownInt23 = 23,
         Vertices = 32,
@@ -164,6 +165,7 @@ namespace MediaEngine.Unpackers
                 case ModelField.FaceCount:
                 case ModelField.IndexCount:
                 case ModelField.VertexCount:
+                case ModelField.UnknownInt21:
                 case ModelField.UnknownInt23:
                 case ModelField.UnknownInt112:
                 case ModelField.UnknownInt114:

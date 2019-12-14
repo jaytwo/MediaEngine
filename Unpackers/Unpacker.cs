@@ -12,17 +12,23 @@ namespace MediaEngine.Unpackers
 
         protected virtual bool OnFinish(BinaryReader source, BinaryWriter destination) { return true; }
 
-        public virtual void Unpack(BinaryReader source, BinaryWriter destination)
+        protected virtual bool SkipFirstByte => true;
+
+        protected virtual byte EndByte => 255;
+
+        public void Unpack(BinaryReader source, BinaryWriter destination)
         {
             _fieldValues.Clear();
-            source.ReadByte(); // ignored
+
+            if (SkipFirstByte)
+                source.ReadByte();
 
             while (true)
             {
                 var fieldByte = source.ReadByte();
                 var field = (T)Enum.ToObject(typeof(T), fieldByte);
 
-                if (fieldByte == 255)
+                if (fieldByte == EndByte)
                 {
                     if (OnFinish(source, destination))
                     {

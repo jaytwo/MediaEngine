@@ -8,20 +8,13 @@ namespace MediaEngine.Unpackers
 
     class HeaderUnpacker : Unpacker<HeaderField>
     {
-        public override void Unpack(BinaryReader source, BinaryWriter destination)
+        protected override bool SkipFirstByte => false;
+        protected override byte EndByte => 16;
+
+        protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
         {
-            _fieldValues.Clear();
-
-            while (true)
-            {
-                var fieldByte = source.ReadByte();
-                var field = (HeaderField)Enum.ToObject(typeof(HeaderField), fieldByte);
-
-                if (fieldByte == 16)
-                    return;
-                
-                Unpack(source, destination, field);
-            }
+            source.BaseStream.Position--;
+            return true;
         }
 
         protected override void Unpack(BinaryReader source, BinaryWriter destination, HeaderField field)

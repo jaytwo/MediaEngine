@@ -69,7 +69,8 @@ namespace MediaEngine.Unpackers
                                 break;
 
                             case ResourceType.Movie:
-                                throw new NotImplementedException();
+                                new MovieUnpacker().Unpack(source, writer);
+                                break;
 
                             case ResourceType.Script:
                                 new TrackUnpacker().Unpack(source, writer);
