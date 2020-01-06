@@ -25,16 +25,15 @@ namespace MediaEngine.Unpackers
 
             while (true)
             {
-                var fieldByte = source.ReadByte();
+                var eof = source.BaseStream.Position == source.BaseStream.Length;
+                var fieldByte = eof ? EndByte : source.ReadByte();
                 var field = (T)Enum.ToObject(typeof(T), fieldByte);
 
-                if (fieldByte == EndByte)
+                if (fieldByte == EndByte && OnFinish(source, destination))
                 {
-                    if (OnFinish(source, destination))
-                    {
+                    if (!eof)
                         _fieldValues[field] = source.ReadByte();
-                        return;
-                    }
+                    return;
                 }
                 else Unpack(source, destination, field);
             }

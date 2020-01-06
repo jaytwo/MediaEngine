@@ -57,7 +57,7 @@ namespace MediaEngine.Unpackers
                         section = (byte)objRef;
                         destination.AppendLine($"Section {section}");
 
-                        if (section == 50 && firstObjRef == 0)
+                        if (section == 50 && firstObjRef == emptyObjRef)
                             break;
 
                         objRef = (int)source.ReadByte();

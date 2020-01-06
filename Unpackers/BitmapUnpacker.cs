@@ -155,7 +155,7 @@ namespace MediaEngine.Unpackers
                 bitmap.Save(destination.BaseStream, ImageFormat.Png);
             }
 
-            return base.OnFinish(source, destination);
+            return true;
         }
     }
 }
