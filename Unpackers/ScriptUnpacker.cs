@@ -33,6 +33,7 @@ namespace MediaEngine.Unpackers
         protected override void Unpack(BinaryReader source, BinaryWriter destination, ScriptField field)
         {
             string value = null;
+            bool expect255 = true;
 
             switch (field)
             {
@@ -44,7 +45,8 @@ namespace MediaEngine.Unpackers
 
                 case ScriptField.Call21:
                     source.BaseStream.Position--;
-                    value = $"{field}({ReadVariants(source, false)});";
+                    value = $"{field}({ReadVariant(source)});";
+                    expect255 = false;
                     break;
 
                 case ScriptField.Call16:
@@ -54,12 +56,39 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ScriptField.Call17:
-                case ScriptField.Call240:
                     value = $"{field}({source.ReadByte() + ReadVariants(source)});";
+                    break;
+
+                case ScriptField.PropertySet:
+                    var classType = (ClassType)source.ReadByte();
+                    value = $"{classType}[{ReadVariants(source, false)}].";
+
+                    if (source.ReadByte() != 255)
+                        throw new InvalidDataException();
+
+                    var prop = new ApiFunction(classType, source.ReadByte(), null, ApiFunctionType.Property);
+                    if (ApiFunctions.All.TryGetValue(prop.Key, out var realProp))
+                        prop = realProp;
+
+                    switch (prop.FunctionType)
+                    {
+                        case ApiFunctionType.Property:
+                            value += $"{prop.PropertyName ?? prop.PropertyNumber.ToString()} = {ReadVariants(source, false)};";
+                            break;
+
+                        case ApiFunctionType.MethodNoParams:
+                            value += $"{prop.PropertyName}();";
+                            expect255 = false;
+                            break;
+                    }
                     break;
 
                 case ScriptField.Call242:
                     value = $"{field}({ReadInt32(source) + ReadVariants(source)}); ";
+                    break;
+
+                case ScriptField.Call64:
+                    value = $"{field}({ReadInt32(source)}); ";
                     break;
 
                 default:
@@ -68,7 +97,7 @@ namespace MediaEngine.Unpackers
             }
 
             int i = 0;
-            while (source.BaseStream.Position != source.BaseStream.Length && source.ReadByte() != 255)
+            while (source.BaseStream.Position != source.BaseStream.Length && expect255 && source.ReadByte() != 255)
                 i++;
 
             if (value != null)
