@@ -9,9 +9,29 @@ namespace MediaEngine.Unpackers
 {
     class ScriptUnpacker : Unpacker<ScriptField>
     {
+        private int _totalLength;
+
         private readonly List<string> _values = new List<string>();
 
         protected override byte EndByte => 0;
+
+        protected override void OnStart(ref BinaryReader source, BinaryWriter destination)
+        {
+            base.OnStart(ref source, destination);
+
+            if (source.ReadByte() != 48)
+                throw new InvalidDataException();
+
+            _totalLength = source.ReadInt32();
+            var scriptBytes = source.ReadBytes(source.ReadInt32());
+            var destinationStream = (FileStream)destination.BaseStream;
+            var fileName = source.BaseStream.Position.ToString() + ".bin";
+
+            using (var writer = new BinaryWriter(File.Create(Path.Combine(Path.GetDirectoryName(destinationStream.Name), fileName))))
+                writer.Write(source.ReadBytes(_totalLength - scriptBytes.Length - 4));
+
+            source = new BinaryReader(new MemoryStream(scriptBytes));
+        }
 
         protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
         {
@@ -50,9 +70,10 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case ScriptField.Call16:
-                case ScriptField.Call25:
-                //case ScriptField.Call128:
-                    value = $"{field}({ReadVariants(source, false)});";
+                    var arg1 = ReadVariant(source);
+                    var arg2 = ReadVariant(source);
+                    var op = (ScriptOperator)source.ReadByte();
+                    value = $"if ({arg1} {op} {arg2})";
                     break;
 
                 case ScriptField.Call17:
@@ -74,6 +95,10 @@ namespace MediaEngine.Unpackers
                     {
                         case ApiFunctionType.Property:
                             value += $"{prop.PropertyName ?? prop.PropertyNumber.ToString()} = {ReadVariants(source, false)};";
+                            break;
+
+                        case ApiFunctionType.PropertyInt:
+                            value += $"{prop.PropertyName} = (int){source.ReadInt32()};";
                             break;
 
                         case ApiFunctionType.MethodNoParams:

@@ -22,7 +22,7 @@ namespace MediaEngine.Unpackers
 
     class MovieUnpacker : Unpacker<MovieField>
     {
-        protected override bool SkipFirstByte => false;
+        protected override void OnStart(ref BinaryReader source, BinaryWriter destination) { }
 
         protected override void Unpack(BinaryReader source, BinaryWriter destination, MovieField field)
         {

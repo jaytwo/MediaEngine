@@ -12,16 +12,14 @@ namespace MediaEngine.Unpackers
 
         protected virtual bool OnFinish(BinaryReader source, BinaryWriter destination) { return true; }
 
-        protected virtual bool SkipFirstByte => true;
+        protected virtual void OnStart(ref BinaryReader source, BinaryWriter destination) => source.ReadByte();
 
         protected virtual byte EndByte => 255;
 
         public void Unpack(BinaryReader source, BinaryWriter destination)
         {
             _fieldValues.Clear();
-
-            if (SkipFirstByte)
-                source.ReadByte();
+            OnStart(ref source, destination);
 
             while (true)
             {

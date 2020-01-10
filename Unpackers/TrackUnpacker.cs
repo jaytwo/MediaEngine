@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -64,17 +63,10 @@ namespace MediaEngine.Unpackers
                 case TrackField.UnknownArray48:
                     List<byte> unknown48bytes = null;
                     string unknown48string = null;
-                    if (_fieldValues.Count == 0)
-                    {
-                        var scriptBytes = source.ReadBytes(source.ReadInt32());
-                        unknown48bytes = scriptBytes.ToList();
-                        WriteScript(destination, scriptBytes);
-                    }
-                    else if (_fieldValues.TryGetValue(TrackField.Type, out var resourceType) &&
+                    if (_fieldValues.TryGetValue(TrackField.Type, out var resourceType) &&
                         TrackItemUnpacker.CanUnpack((ResourceType)resourceType))
                     {
                         source.BaseStream.Position--;
-                        unknown48bytes = null;
                         unknown48string = TrackItemUnpacker.Unpack(source, (ResourceType)resourceType);
                     }
                     else
@@ -189,21 +181,6 @@ namespace MediaEngine.Unpackers
             return Enumerable.Range(0, _fieldValues[TrackField.UnknownArray35])
                 .Select(i => source.ReadInt32())
                 .ToArray();
-        }
-
-        private void WriteScript(BinaryWriter destination, byte[] script)
-        {
-            var script1Length = new BinaryReader(new MemoryStream(script)).ReadInt32();
-            var script1 = script.Skip(4).Take(script1Length).ToArray();
-            var destinationStream = (FileStream)destination.BaseStream;
-
-            var fileName = destinationStream.Position.ToString() + "-Script.txt";
-            using (var writer = new BinaryWriter(File.Create(Path.Combine(Path.GetDirectoryName(destinationStream.Name), fileName))))
-                new ScriptUnpacker().Unpack(new BinaryReader(new MemoryStream(script1)), writer);
-
-            fileName = destinationStream.Position.ToString() + "-Script.bin";
-            using (var writer = new BinaryWriter(File.Create(Path.Combine(Path.GetDirectoryName(destinationStream.Name), fileName))))
-                writer.Write(script, script1Length, script.Length - script1Length);
         }
 
         private void WriteArray(BinaryWriter destination, TrackField field, byte[] array, string s = null)

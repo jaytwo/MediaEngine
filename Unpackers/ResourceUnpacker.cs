@@ -72,8 +72,12 @@ namespace MediaEngine.Unpackers
                                 new MovieUnpacker().Unpack(source, writer);
                                 break;
 
-                            case ResourceType.Script:
+                            case ResourceType.Track:
                                 new TrackUnpacker().Unpack(source, writer);
+                                break;
+
+                            case ResourceType.Script:
+                                new ScriptUnpacker().Unpack(source, writer);
                                 break;
                         }
                     }

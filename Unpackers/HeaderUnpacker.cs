@@ -1,5 +1,4 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Text;
 
 namespace MediaEngine.Unpackers
@@ -8,8 +7,9 @@ namespace MediaEngine.Unpackers
 
     class HeaderUnpacker : Unpacker<HeaderField>
     {
-        protected override bool SkipFirstByte => false;
         protected override byte EndByte => 16;
+
+        protected override void OnStart(ref BinaryReader source, BinaryWriter destination) { }
 
         protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
         {
