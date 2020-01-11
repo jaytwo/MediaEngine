@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -16,11 +17,14 @@ namespace MediaEngine.Unpackers
         UnknownArray35 = 35,
         UnknownArray37 = 37,
         UnknownArray38 = 38,
+        UnknownArray42 = 42,
         UnknownArray48 = 48,
         UnknownInt50 = 50,
         UnknownInt51 = 51,
         UnknownInt52 = 52,
         Name = 64,
+        UnknownInt65 = 65,
+        End = 255
     }
 
     class TrackUnpacker : Unpacker<TrackField>
@@ -39,12 +43,12 @@ namespace MediaEngine.Unpackers
 
                 case TrackField.UnknownByte32:
                     var unknownByte32 = source.ReadByte();
-                    if (unknownByte32 == 16)
+                    if (unknownByte32 == 16 || unknownByte32 == 65)
                         source.BaseStream.Position--;
                     else
                     {
                         value = unknownByte32.ToString();
-                        if (unknownByte32 != 1 || _fieldValues.ContainsKey(field))
+                        if (unknownByte32 != 1)// || _fieldValues.ContainsKey(field))
                         {
                             while ((unknownByte32 = source.ReadByte()) != 48)
                                 value += ", " + unknownByte32.ToString();
@@ -55,9 +59,7 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case TrackField.UnknownArray35:
-                    var unknown35 = ReadUnknownArray35(source);
-                    if (unknown35.Length != 0)
-                        WriteArray(destination, field, null, string.Join(", ", unknown35));
+                    WriteArrayInts(source, destination, field);
                     break;
 
                 case TrackField.UnknownArray48:
@@ -114,17 +116,11 @@ namespace MediaEngine.Unpackers
                 case TrackField.UnknownArray38:
                     if (_fieldValues.Count > 0)
                     {
-                        if (source.ReadByte() != 0)
-                            throw new InvalidDataException();
-                        _fieldValues[field] = source.ReadInt32();
-                        var unknown3x = source.ReadBytes(_fieldValues[field] * (field == TrackField.UnknownArray34 ? 4 : 8));
-                        WriteArray(destination, field, unknown3x);
-                        value = _fieldValues[field].ToString() + " objects";
+                        WriteArrayInts(source, destination, field, field != TrackField.UnknownArray34);
+                        value = _fieldValues[field].ToString() + " objects (in " + destination.BaseStream.Position + ".bin)";
                         if (field == TrackField.UnknownArray34)
                         {
-                            if (source.ReadByte() == 42)
-                                source.ReadBytes(6);
-                            ReadUnknownArray35(source);
+                            WriteArrayInts(source, destination, (TrackField)source.ReadByte());
                             if (source.ReadByte() != 255)
                                 source.BaseStream.Position--;
                         }
@@ -165,22 +161,37 @@ namespace MediaEngine.Unpackers
                         value += ":" + Encoding.GetEncoding(932).GetString(source.ReadBytes(_fieldValues[field]));
                     break;
 
+                case TrackField.End:
+                    _fieldValues.Clear();
+                    break;
+
                 default:
                     _fieldValues[field] = source.ReadInt32();
                     break;
             }
 
-            destination.Write(Encoding.UTF8.GetBytes(string.Format("{0} = {1}\r\n", field, value ?? _fieldValues[field].ToString())));
+            if (field == TrackField.End)
+                destination.Write("\r\n");
+            else
+                destination.Write(Encoding.UTF8.GetBytes(string.Format("{0} = {1}\r\n", field, value ?? _fieldValues[field].ToString())));
         }
 
-        private int[] ReadUnknownArray35(BinaryReader source)
+        private void WriteArrayInts(BinaryReader source, BinaryWriter destination, TrackField field, bool longs = false)
         {
+            var header = field == TrackField.UnknownArray42 ?
+                ("Header: " + string.Join(", ", source.ReadBytes(6)) + Environment.NewLine) : string.Empty;
+
             if (source.ReadByte() != 0)
                 throw new InvalidDataException();
-            _fieldValues[TrackField.UnknownArray35] = source.ReadInt32();
-            return Enumerable.Range(0, _fieldValues[TrackField.UnknownArray35])
-                .Select(i => source.ReadInt32())
+
+            _fieldValues[field] = source.ReadInt32();
+
+            var ints = Enumerable.Range(0, _fieldValues[field])
+                .Select(i => longs ? source.ReadInt64() : source.ReadInt32())
                 .ToArray();
+
+            if (ints.Length != 0)
+                WriteArray(destination, field, null, header + string.Join(", ", ints));
         }
 
         private void WriteArray(BinaryWriter destination, TrackField field, byte[] array, string s = null)
@@ -197,12 +208,6 @@ namespace MediaEngine.Unpackers
 
         protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
         {
-            destination.Write("\r\n");
-            _fieldValues.Clear();
-
-            if (source.ReadByte() != 32)
-                source.BaseStream.Position--;
-
             return false;
         }
     }
