@@ -59,7 +59,7 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case TrackField.UnknownArray35:
-                    var ints = ReadArrayInts(source, field, false);
+                    var ints = ReadArray(source, field, s => source.ReadInt32());
                     if (!ints.EndsWith(" "))
                         WriteArray(destination, field, null, ints);
                     break;
@@ -116,67 +116,51 @@ namespace MediaEngine.Unpackers
                 case TrackField.UnknownArray34:
                 case TrackField.UnknownArray37:
                 case TrackField.UnknownArray38:
-                    if (_fieldValues.Count > 0)
+                    var section = field;
+                    var txt = string.Empty;
+
+                    while (true)
                     {
-                        var section = field;
-                        var txt = string.Empty;
-
-                        while (true)
+                        if (!_fieldValues.ContainsKey(TrackField.Type) && section == TrackField.UnknownArray34)
                         {
-                            txt += ReadArrayInts(source, section, section != TrackField.UnknownArray34) + Environment.NewLine;
-                            section = (TrackField)source.ReadByte();
-
-                            if (section != TrackField.UnknownArray33 &&
-                                section != TrackField.UnknownArray34 &&
-                                section != TrackField.UnknownArray37 &&
-                                section != TrackField.UnknownArray38 &&
-                                section != TrackField.UnknownArray42)
+                            var strings = new List<object>();
+                            for (int i = 0; source.ReadByte() != 255; i++)
                             {
                                 source.BaseStream.Position--;
-
-                                if (field == TrackField.UnknownArray33)
-                                {
-                                    txt += ReadArrayInts(source, (TrackField)source.ReadByte());
-
-                                    if (source.ReadByte() != 255)
-                                        source.BaseStream.Position--;
-                                }
-
-                                break;
+                                strings.Add(i % 3 == 1 ? Translator.ReadString(source) : source.ReadInt32().ToString());
                             }
+
+                            source.BaseStream.Position--;
+                            txt += ReadArray(strings.ToArray(), field);
                         }
+                        else txt += ReadArray(source, section, s =>
+                        {
+                            if (!_fieldValues.ContainsKey(TrackField.Type) && section == TrackField.UnknownArray33)
+                                return source.ReadByte();
+                            else if (section == TrackField.UnknownArray34 || section == TrackField.UnknownArray35)
+                                return source.ReadInt32();
+                            else
+                                return source.ReadInt64();
+                        });
 
-                        WriteArray(destination, field, null, txt);
-                        value = "(in " + destination.BaseStream.Position + ".bin)";
+                        txt += Environment.NewLine;
+                        section = (TrackField)source.ReadByte();
 
-                        if (source.ReadByte() != 33)
+                        if (section != TrackField.UnknownArray33 &&
+                            section != TrackField.UnknownArray34 &&
+                            section != TrackField.UnknownArray35 &&
+                            section != TrackField.UnknownArray37 &&
+                            section != TrackField.UnknownArray38 &&
+                            section != TrackField.UnknownArray42)
                         {
                             source.BaseStream.Position--;
                             break;
                         }
                     }
 
-                    if (source.ReadByte() != 0)
-                        throw new InvalidDataException();
+                    WriteArray(destination, field, null, txt);
+                    value = "(in " + destination.BaseStream.Position + ".txt)";
 
-                    var unknown3y = new List<byte>(source.ReadBytes(source.ReadInt32()));
-                    byte b3;
-                    while ((b3 = source.ReadByte()) != 34)
-                        unknown3y.Add(b3);
-                    WriteArray(destination, field, unknown3y.ToArray());
-                    value = value == null ? string.Empty : (value + " + ");
-                    value += unknown3y.Count + " bytes";
-
-                    var unknown3z = new List<byte>(source.ReadBytes(unknown3y.Count * 2));
-                    while ((b3 = source.ReadByte()) != 255)
-                        unknown3z.Add(b3);
-                    while ((b3 = source.ReadByte()) != 32)
-                        unknown3z.Add(b3);
-                    source.BaseStream.Position--;
-                    WriteArray(destination, field, unknown3z.ToArray());
-
-                    _fieldValues[field] = unknown3y.Count;
-                    value += " + " + unknown3z.Count + " bytes";
                     break;
 
                 case TrackField.Type:
@@ -203,19 +187,27 @@ namespace MediaEngine.Unpackers
                 destination.Write(Encoding.UTF8.GetBytes(string.Format("{0} = {1}\r\n", field, value ?? _fieldValues[field].ToString())));
         }
 
-        private string ReadArrayInts(BinaryReader source, TrackField field, bool longs = false)
+        private string ReadArray(BinaryReader source, TrackField field, Func<BinaryReader, object> read)
         {
-            if (source.ReadByte() != 0)
+            var header = source.ReadByte();
+            if (header != 0 && header != 255)
                 throw new InvalidDataException();
 
             _fieldValues[field] = source.ReadInt32();
+            if (header == 255)
+                _fieldValues[field] = 0;
 
-            var ints = Enumerable.Range(0, _fieldValues[field])
-                .Select(i => longs ? source.ReadInt64() : source.ReadInt32())
+            var items = Enumerable.Range(0, _fieldValues[field])
+                .Select(i => read(source))
                 .ToArray();
 
+            return ReadArray(items, field);
+        }
+
+        private string ReadArray(object[] items, TrackField field)
+        {
             return $"Section {(int)field}" + Environment.NewLine +
-                "    Objects[" + ints.Length + "] = " + string.Join(", ", ints);
+                "    Objects[" + items.Length + "] = " + string.Join(", ", items);
         }
 
         private void WriteArray(BinaryWriter destination, TrackField field, byte[] array, string s = null)
