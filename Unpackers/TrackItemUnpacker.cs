@@ -6,23 +6,6 @@ namespace MediaEngine.Unpackers
 {
     static class TrackItemUnpacker
     {
-        public static bool CanUnpack(ResourceType resourceType)
-        {
-            switch (resourceType)
-            {
-                case ResourceType.Bitmap:
-                case ResourceType.Camera:
-                case ResourceType.Ear:
-                case ResourceType.Light:
-                case ResourceType.Model:
-                case ResourceType.Movie:
-                    return true;
-
-                default:
-                    return false;
-            }
-        }
-
         public static string Unpack(BinaryReader source, ResourceType resourceType)
         {
             byte section = 47;

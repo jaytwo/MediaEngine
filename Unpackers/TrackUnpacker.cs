@@ -61,51 +61,19 @@ namespace MediaEngine.Unpackers
                 case TrackField.UnknownArray35:
                     var ints = ReadArray(source, field, s => source.ReadInt32());
                     if (!ints.EndsWith(" "))
-                        WriteArray(destination, field, null, ints);
+                        WriteArray(destination, field, ints);
                     break;
 
                 case TrackField.UnknownArray48:
-                    List<byte> unknown48bytes = null;
-                    string unknown48string = null;
-                    if (_fieldValues.TryGetValue(TrackField.Type, out var resourceType) &&
-                        TrackItemUnpacker.CanUnpack((ResourceType)resourceType))
-                    {
-                        source.BaseStream.Position--;
-                        unknown48string = TrackItemUnpacker.Unpack(source, (ResourceType)resourceType);
-                    }
-                    else
-                    {
-                        unknown48bytes = new List<byte>();
-                        unknown48bytes.Add(48);
-                        while (true)
-                        {
-                            try
-                            {
-                                byte b1 = source.ReadByte();
-                                if (b1 == 50 && unknown48bytes.Count == 4)
-                                    break;
-                                if (b1 == 35 && unknown48bytes.Last() == 255)
-                                {
-                                    var end48 = source.ReadInt32();
-                                    source.BaseStream.Position -= 4;
+                    _fieldValues.TryGetValue(TrackField.Type, out var resourceType);
+                    source.BaseStream.Position--;
+                    var unknown48string = TrackItemUnpacker.Unpack(source, (ResourceType)resourceType);
 
-                                    if (end48 == 0)
-                                        break;
-                                }
-                                unknown48bytes.Add(b1);
-                            }
-                            catch (EndOfStreamException)
-                            {
-                                break;
-                            }
-                        }
-                    }
-
-                    _fieldValues[field] = unknown48bytes?.Count ?? unknown48string.Length;
+                    _fieldValues[field] = unknown48string.Length;
                     value = _fieldValues[field].ToString();
 
-                    WriteArray(destination, field, unknown48bytes?.ToArray(), unknown48string);
-                    value += " (in " + destination.BaseStream.Position + ".bin)";
+                    WriteArray(destination, field, unknown48string);
+                    value += " (in " + destination.BaseStream.Position + ".txt)";
                     break;
 
                 case TrackField.Name:
@@ -158,7 +126,7 @@ namespace MediaEngine.Unpackers
                         }
                     }
 
-                    WriteArray(destination, field, null, txt);
+                    WriteArray(destination, field, txt);
                     value = "(in " + destination.BaseStream.Position + ".txt)";
 
                     break;
@@ -210,16 +178,16 @@ namespace MediaEngine.Unpackers
                 "    Objects[" + items.Length + "] = " + string.Join(", ", items);
         }
 
-        private void WriteArray(BinaryWriter destination, TrackField field, byte[] array, string s = null)
+        private void WriteArray(BinaryWriter destination, TrackField field, string s)
         {
             var destinationStream = (FileStream)destination.BaseStream;
             var fileName = destinationStream.Position.ToString();
             if (_fieldValues.TryGetValue(TrackField.Type, out var t))
                 fileName += "-" + ((ResourceType)t).ToString();
-            fileName += "-" + field.ToString() + (array == null ? ".txt" : ".bin");
+            fileName += "-" + field.ToString() + ".txt";
 
             using (var writer = new BinaryWriter(File.Create(Path.Combine(Path.GetDirectoryName(destinationStream.Name), fileName))))
-                writer.Write(array ?? Encoding.UTF8.GetBytes(s));
+                writer.Write(Encoding.UTF8.GetBytes(s));
         }
 
         protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
