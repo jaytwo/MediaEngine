@@ -36,7 +36,7 @@ namespace MediaEngine.Unpackers
                 if (source.ReadByte() != 1)
                     throw new InvalidDataException();
                 
-                Name = Translator.ReadString2(source);
+                Name = Translator.ReadString(source);
 
                 if (source.ReadByte() != 2)
                     throw new InvalidDataException();

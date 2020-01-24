@@ -1,6 +1,4 @@
-﻿using NaturalSort.Extension;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -9,10 +7,6 @@ namespace MediaEngine.Unpackers
 {
     class ScriptUnpacker : Unpacker<ScriptField>
     {
-        private int _totalLength;
-
-        private readonly List<string> _values = new List<string>();
-
         protected override byte EndByte => 0;
 
         protected override void OnStart(ref BinaryReader source, BinaryWriter destination)
@@ -22,32 +16,15 @@ namespace MediaEngine.Unpackers
             if (source.ReadByte() != 48)
                 throw new InvalidDataException();
 
-            _totalLength = source.ReadInt32();
+            var totalLength = source.ReadInt32();
             var scriptBytes = source.ReadBytes(source.ReadInt32());
             var destinationStream = (FileStream)destination.BaseStream;
-            var fileName = source.BaseStream.Position.ToString() + ".bin";
 
-            using (var writer = new BinaryWriter(File.Create(Path.Combine(Path.GetDirectoryName(destinationStream.Name), fileName))))
-                writer.Write(source.ReadBytes(_totalLength - scriptBytes.Length - 4));
+            using (var writer = new BinaryWriter(File.Create(Path.Combine(Path.GetDirectoryName(destinationStream.Name), "Table.txt"))))
+            using (var reader = new BinaryReader(new MemoryStream(source.ReadBytes(totalLength - scriptBytes.Length - 4))))
+                new TableUnpacker().Unpack(reader, writer);
 
             source = new BinaryReader(new MemoryStream(scriptBytes));
-        }
-
-        protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
-        {
-            foreach (var value in _values)
-                destination.Write(Encoding.UTF8.GetBytes(value + Environment.NewLine));
-            return true;
-
-            foreach (var value in _values.GroupBy(v => v).OrderBy(v => v.Key, StringComparer.CurrentCulture.WithNaturalSort()))
-            {
-                var key = value.Key;
-                if (value.Count() > 1)
-                    key += " x" + value.Count();
-                destination.Write(Encoding.UTF8.GetBytes(key + Environment.NewLine));
-            }
-
-            return true;
         }
 
         protected override void Unpack(BinaryReader source, BinaryWriter destination, ScriptField field)
@@ -126,7 +103,12 @@ namespace MediaEngine.Unpackers
                 i++;
 
             if (value != null)
-                _values.Add(value + (i == 0 ? string.Empty : $" +{i} to {source.BaseStream.Position}"));
+            {
+                if (i != 0)
+                    value += $" +{i} to {source.BaseStream.Position}";
+
+                destination.Write(Encoding.UTF8.GetBytes(value + Environment.NewLine));
+            }
         }
 
         private static int ReadInt32(BinaryReader source)
