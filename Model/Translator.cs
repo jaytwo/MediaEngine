@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -9,14 +8,21 @@ namespace MediaEngine.Unpackers
     static class Translator
     {
         private static readonly Dictionary<string, string> _strings = new Dictionary<string, string>();
-        private static readonly char[] _exemptions = "０１２３４５６７８９0123456789".ToArray();
+        private static readonly char[] _exemptions = "０１２３４５６７８９ＸＹＺ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ.".ToArray();
 
-        public static void Load(string keysPath, string valuesPath)
+        private static StreamWriter _writer;
+
+        public static void Load(string path, string assetsPath)
         {
-            using (var keys = new StreamReader(File.OpenRead(keysPath)))
-            using (var values = new StreamReader(File.OpenRead(valuesPath)))
-                while (!keys.EndOfStream && !values.EndOfStream)
-                    _strings[keys.ReadLine()] = values.ReadLine();
+            path = path.Substring(0, path.Length - 5);
+
+            if (File.Exists(path + ".in.txt"))
+                using (var keys = new StreamReader(File.OpenRead(path + ".in.txt")))
+                using (var values = new StreamReader(File.OpenRead(path + ".out.txt")))
+                    while (!keys.EndOfStream && !values.EndOfStream)
+                        _strings[keys.ReadLine()] = values.ReadLine();
+
+            _writer = new StreamWriter(Path.Combine(assetsPath, Path.GetFileName(path) + ".in.txt"));
         }
 
         public static void Save(string keysPath)
@@ -41,7 +47,7 @@ namespace MediaEngine.Unpackers
         public static string ReadString2(BinaryReader source)
         {
             var s = Encoding.GetEncoding(932).GetString(source.ReadBytes(source.ReadByte() + 3)).TrimStart('\0');
-            return Translator.Translate(s);
+            return Translate(s);
         }
 
         public static string Translate(string s)
@@ -53,7 +59,15 @@ namespace MediaEngine.Unpackers
                     .Select(c => c >= '０' && c <= '９' ? (char)(c + '0' - '０') : c)
                     .ToArray());
             else
+            {
                 _strings.Add(word, word);
+
+                if (word.Any(c => c >= '\u303f'))
+                {
+                    _writer.WriteLine(word);
+                    _writer.Flush();
+                }
+            }
 
             return s;
         }
