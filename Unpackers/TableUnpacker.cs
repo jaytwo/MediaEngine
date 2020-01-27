@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -16,14 +17,27 @@ namespace MediaEngine.Unpackers
 
     class TableUnpacker : Unpacker<TableField>
     {
+        private Dictionary<int, string> _strings = new Dictionary<int, string>();
+
         protected override byte EndByte => 16;
 
         protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
         {
+            for (int i = 0; i < 3; i++)
+                if (source.ReadByte() != 0)
+                    throw new InvalidDataException();
+
             var destinationStream = (FileStream)destination.BaseStream;
 
-            using (var file = File.Create(Path.Combine(Path.GetDirectoryName(destinationStream.Name), "Unknown.bin")))
-                source.BaseStream.CopyTo(file);
+            using (var writer = new StreamWriter(Path.Combine(Path.GetDirectoryName(destinationStream.Name), "EventHandlers.txt")))
+                while (source.BaseStream.Length - source.BaseStream.Position > 3)
+                {
+                    var address = source.ReadInt32();
+                    writer.Write(address.ToString("X8"));
+
+                    _strings.TryGetValue(address, out var s);
+                    writer.WriteLine(" " + s);
+                }
 
             source.BaseStream.Position--;
             return true;
@@ -31,6 +45,7 @@ namespace MediaEngine.Unpackers
 
         protected override void Unpack(BinaryReader source, BinaryWriter destination, TableField field)
         {
+            var address = 0;
             var value = field.ToString() + " = ";
 
             switch (field)
@@ -73,20 +88,25 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case TableField.Unknown130:
-                    value += string.Join(", ", source.ReadBytes(16));
+                    address = source.ReadInt32();
+                    value += $"{address.ToString("X8")}, {source.ReadInt32()}, {source.ReadInt32()}, {source.ReadInt32()}";
                     break;
 
                 case TableField.Unknown131:
                 case TableField.Unknown132:
-                    value += string.Join(", ", source.ReadBytes(12));
+                    address = source.ReadInt32();
+                    value += $"{address.ToString("X8")}, {source.ReadInt32()}, {source.ReadInt32()}";
                     break;
 
                 default:
                     throw new NotImplementedException();
             }
 
-            value += ", " + Translator.ReadString(source);
-            destination.Write(Encoding.UTF8.GetBytes(value + Environment.NewLine));
+            var entry = Translator.ReadString(source);
+            if (address != 0)
+                _strings.Add(address, entry);
+
+            destination.Write(Encoding.UTF8.GetBytes(value + ", " + entry + Environment.NewLine));
 
             if (source.ReadUInt16() != 0)
                 source.BaseStream.Position--;
