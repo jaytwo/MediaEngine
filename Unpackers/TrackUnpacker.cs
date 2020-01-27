@@ -17,6 +17,7 @@ namespace MediaEngine.Unpackers
         UnknownArray35 = 35,
         UnknownArray37 = 37,
         UnknownArray38 = 38,
+        UnknownByte41 = 41,
         UnknownArray42 = 42,
         UnknownArray48 = 48,
         UnknownInt50 = 50,
@@ -64,10 +65,32 @@ namespace MediaEngine.Unpackers
                         WriteArray(destination, field, ints);
                     break;
 
+                case TrackField.UnknownByte41:
+                    _fieldValues[field] = source.ReadByte();
+                    break;
+
                 case TrackField.UnknownArray48:
+                    string unknown48string = string.Empty;
                     _fieldValues.TryGetValue(TrackField.Type, out var resourceType);
-                    source.BaseStream.Position--;
-                    var unknown48string = TrackItemUnpacker.Unpack(source, (ResourceType)resourceType);
+
+                    if (_fieldValues.ContainsKey(TrackField.UnknownByte41))
+                    {
+                        while (true)
+                        {
+                            var objectType = source.ReadByte();
+                            if (objectType == 255)
+                                break;
+
+                            var objectCount = source.ReadByte();
+                            unknown48string += $"Unknown{objectType}[{objectCount}] = " + string.Join(", ",
+                                Enumerable.Range(0, resourceType * objectCount).Select(e => source.ReadSingle())) + Environment.NewLine;
+                        }
+                    }
+                    else
+                    {
+                        source.BaseStream.Position--;
+                        unknown48string = TrackItemUnpacker.Unpack(source, (ResourceType)resourceType);
+                    }
 
                     _fieldValues[field] = unknown48string.Length;
                     value = _fieldValues[field].ToString();
