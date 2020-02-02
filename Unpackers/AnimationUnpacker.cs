@@ -1,14 +1,16 @@
-﻿using System.IO;
+﻿using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 
 namespace MediaEngine.Unpackers
 {
-    static class TrackItemUnpacker
+    static class AnimationUnpacker
     {
-        public static string Unpack(BinaryReader source, ResourceType resourceType)
+        public static string Unpack(BinaryReader source, ResourceType resourceType, out string description)
         {
-            byte section = 47;
+            var field = (TrackField)47;
+            var counts = new List<int>();
             var destination = new StringBuilder();
             var firstObjRef = new int?();
             var emptyObjRef = 0;
@@ -30,20 +32,21 @@ namespace MediaEngine.Unpackers
                 if (objRef == 255)
                     break;
 
-                if (objRef == section + 1)
+                if (objRef == (int)field + 1)
                 {
                     var nextByte = source.ReadByte();
                     source.BaseStream.Position--;
 
                     if (firstObjRef == null || firstObjRef == nextByte || firstObjRef == emptyObjRef)
                     {
-                        section = (byte)objRef;
-                        destination.AppendLine($"Section {section}");
+                        field = (TrackField)objRef;
+                        destination.AppendLine(field.ToString());
+                        counts.Add(0);
 
-                        if (section == 50 && firstObjRef == emptyObjRef)
+                        if (field == TrackField.AnimateScale && firstObjRef == emptyObjRef)
                             break;
 
-                        objRef = (int)source.ReadByte();
+                        objRef = source.ReadByte();
                     }
                 }
 
@@ -59,8 +62,10 @@ namespace MediaEngine.Unpackers
                     .ToArray();
 
                 destination.AppendLine($"    Object {objRef}: " + string.Join(", ", content));
+                counts[counts.Count - 1]++;
             }
 
+            description = string.Join(" + ", counts);
             return destination.ToString();
         }
     }
