@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -8,10 +9,10 @@ namespace MediaEngine.Unpackers
 {
     enum TrackField
     {
-        UnknownInt16 = 16,
+        Frames = 16,
         Type = 17,
         Index = 18,
-        UnknownByte32 = 32,
+        FrameBits = 32,
         UnknownArray33 = 33,
         UnknownArray34 = 34,
         UnknownArray35 = 35,
@@ -22,6 +23,8 @@ namespace MediaEngine.Unpackers
         AnimatePosition = 48,
         AnimateRotation = 49,
         AnimateScale = 50,
+        UnknownInt51 = 51,
+        UnknownInt52 = 52,
         Name = 64,
         UnknownInt65 = 65,
         End = 255
@@ -35,7 +38,7 @@ namespace MediaEngine.Unpackers
 
             switch (field)
             {
-                case TrackField.UnknownByte32:
+                case TrackField.FrameBits:
                     if (!_fieldValues.Any())
                     {
                         // Start of track
@@ -44,17 +47,17 @@ namespace MediaEngine.Unpackers
 
                         _fieldValues[field] = source.ReadInt32();
                     }
+                    else if (!_fieldValues.ContainsKey(TrackField.Frames))
+                    {
+                        if (source.ReadByte() != 1)
+                            throw new InvalidDataException();
+                        return;
+                    }
                     else
                     {
-                        var unknownByte32 = source.ReadByte();
-                        value = unknownByte32.ToString();
-                        if (unknownByte32 != 1)
-                        {
-                            while ((unknownByte32 = source.ReadByte()) != (byte)TrackField.AnimatePosition)
-                                value += ", " + unknownByte32.ToString();
-                            source.BaseStream.Position--;
-                        }
-                        _fieldValues[field] = unknownByte32;
+                        var frameBits = new BitArray(source.ReadBytes((int)Math.Ceiling(_fieldValues[TrackField.Frames] / 8.0)));
+                        frameBits.Length = _fieldValues[TrackField.Frames];
+                        value = string.Join(string.Empty, frameBits.Cast<bool>().Select(b => b ? "1" : "0"));
                     }
                     break;
 
@@ -69,16 +72,25 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case TrackField.AnimatePosition:
+                case TrackField.AnimateRotation:
+                    if (_fieldValues.ContainsKey(TrackField.UnknownArray35))
+                    {
+                        _fieldValues[field] = source.ReadByte();
+                        break;
+                    }
+
                     string animationData = string.Empty;
                     _fieldValues.TryGetValue(TrackField.Type, out var resourceType);
-
                     if (_fieldValues.ContainsKey(TrackField.UnknownByte41))
                     {
                         while (true)
                         {
-                            var objectType = source.ReadByte();
+                            var objectType = (int)source.ReadByte();
                             if (objectType == 255)
                                 break;
+
+                            if (objectType == 128)
+                                objectType = source.ReadInt32();
 
                             var objectCount = source.ReadByte();
                             animationData += $"Unknown{objectType}[{objectCount}] = " + string.Join(", ",
@@ -90,7 +102,7 @@ namespace MediaEngine.Unpackers
                     else
                     {
                         source.BaseStream.Position--;
-                        animationData = AnimationUnpacker.Unpack(source, (ResourceType)resourceType, out value);
+                        animationData = AnimationUnpacker.Unpack(source, (ResourceType)resourceType, _fieldValues[TrackField.Frames], out value);
                     }
 
                     _fieldValues[field] = animationData.Length;
@@ -157,13 +169,15 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case TrackField.Type:
-                    if (_fieldValues[TrackField.UnknownByte32] < 12)
+                    _fieldValues[field] = source.ReadInt32();
+                    value = ((ResourceType)_fieldValues[field]).ToString();
+
+                    var nextField = (TrackField)source.ReadByte();
+                    source.BaseStream.Position--;
+
+                    if (nextField != TrackField.Index && nextField != TrackField.AnimatePosition)
                     {
-                        _fieldValues[field] = source.ReadInt32();
-                        value = ((ResourceType)_fieldValues[field]).ToString();
-                    }
-                    else
-                    {
+                        source.BaseStream.Position -= 4;
                         value = Translator.ReadString(source) + Environment.NewLine;
                         _fieldValues.Clear();
                     }
@@ -178,7 +192,7 @@ namespace MediaEngine.Unpackers
                     break;
             }
 
-            if (field == TrackField.UnknownByte32 && _fieldValues.Count == 1)
+            if (field == TrackField.FrameBits && _fieldValues.Count == 1)
                 destination.Write(Encoding.UTF8.GetBytes($"-- TRACK ({_fieldValues[field]}) --\r\n"));
             else if (field == TrackField.End)
                 destination.Write(Encoding.UTF8.GetBytes("\r\n"));

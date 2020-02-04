@@ -7,13 +7,14 @@ namespace MediaEngine.Unpackers
 {
     static class AnimationUnpacker
     {
-        public static string Unpack(BinaryReader source, ResourceType resourceType, out string description)
+        public static string Unpack(BinaryReader source, ResourceType resourceType, int frameCount, out string description)
         {
             var field = (TrackField)47;
             var counts = new List<int>();
             var destination = new StringBuilder();
             var firstObjRef = new int?();
             var emptyObjRef = 0;
+            var frame = 0;
 
             switch (resourceType)
             {
@@ -28,41 +29,43 @@ namespace MediaEngine.Unpackers
 
             while (source.BaseStream.Position < source.BaseStream.Length - 1)
             {
-                var objRef = (int)source.ReadByte();
-                if (objRef == 255)
+                var frameRepeats = (int)source.ReadByte();
+                if (frameRepeats == 255)
                     break;
 
-                if (objRef == (int)field + 1)
+                if (frameRepeats == (int)field + 1)
                 {
                     var nextByte = source.ReadByte();
                     source.BaseStream.Position--;
 
                     if (firstObjRef == null || firstObjRef == nextByte || firstObjRef == emptyObjRef)
                     {
-                        field = (TrackField)objRef;
+                        field = (TrackField)frameRepeats;
                         destination.AppendLine(field.ToString());
                         counts.Add(0);
+                        frame = 0;
 
                         if (field == TrackField.AnimateScale && firstObjRef == emptyObjRef)
                             break;
 
-                        objRef = source.ReadByte();
+                        frameRepeats = source.ReadByte();
                     }
                 }
 
-                if (objRef == 128)
-                    objRef = source.ReadInt32();
+                if (frameRepeats == 128)
+                    frameRepeats = source.ReadInt32();
 
                 if (firstObjRef == null)
-                    firstObjRef = objRef;
+                    firstObjRef = frameRepeats;
 
                 var length = firstObjRef == emptyObjRef ? 0 : source.ReadByte();
                 var content = Enumerable.Range(0, length * 3)
                     .Select(i => source.ReadSingle())
                     .ToArray();
 
-                destination.AppendLine($"    Object {objRef}: " + string.Join(", ", content));
+                destination.AppendLine($"    Frames {frame}-{frame + frameRepeats}: " + string.Join(", ", content));
                 counts[counts.Count - 1]++;
+                frame += frameRepeats + 1;
             }
 
             description = string.Join(" + ", counts);
