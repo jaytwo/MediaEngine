@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -7,12 +9,18 @@ namespace MediaEngine.Unpackers
 {
     static class AnimationUnpacker
     {
-        public static string Unpack(BinaryReader source, ResourceType resourceType, int frameCount, out string description)
+        public static string Unpack(BinaryReader source, int frameCount, out string description)
         {
-            var field = (TrackField)47;
-            var counts = new List<int>();
+            var frameBits = new BitArray(source.ReadBytes((int)Math.Ceiling(frameCount / 8.0)));
+            frameBits.Length = frameCount;
+
             var destination = new StringBuilder();
+            destination.AppendLine(TrackField.FrameBits.ToString());
+            destination.AppendLine($"    Bits[{frameBits.Length}]: " + string.Join(string.Empty, frameBits.Cast<bool>().Select(b => b ? "1" : "0")));
+
+            var counts = new List<int>{ frameBits.Length };
             var firstObjRef = new int?();
+            var field = (TrackField)47;
             var frame = 0;
 
             var sections = new List<TrackField>
@@ -34,7 +42,7 @@ namespace MediaEngine.Unpackers
                     var nextByte = source.ReadByte();
                     source.BaseStream.Position--;
 
-                    if (firstObjRef == null || firstObjRef == nextByte || frame + frameRepeats > frameCount)
+                    if (firstObjRef == null || (frameRepeats == 34 && firstObjRef == nextByte) || frame + frameRepeats > frameCount)
                     {
                         field = (TrackField)frameRepeats;
                         destination.AppendLine(field.ToString());
@@ -68,13 +76,14 @@ namespace MediaEngine.Unpackers
                 if (firstObjRef == null)
                     firstObjRef = frameRepeats;
 
-                var content = Enumerable.Range(0, source.ReadByte() * 3)
+                var length = source.ReadByte();
+                var content = Enumerable.Range(0, length * 3)
                     .Select(i => source.ReadSingle())
                     .ToArray();
 
                 destination.AppendLine($"    Frames {frame}-{frame + frameRepeats}: " + string.Join(", ", content));
                 counts[counts.Count - 1]++;
-                frame += frameRepeats + 1;
+                frame += frameRepeats + length;
             }
 
             description = string.Join(" + ", counts);

@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -55,9 +54,8 @@ namespace MediaEngine.Unpackers
                     }
                     else
                     {
-                        var frameBits = new BitArray(source.ReadBytes((int)Math.Ceiling(_fieldValues[TrackField.Frames] / 8.0)));
-                        frameBits.Length = _fieldValues[TrackField.Frames];
-                        value = string.Join(string.Empty, frameBits.Cast<bool>().Select(b => b ? "1" : "0"));
+                        var animationData = AnimationUnpacker.Unpack(source, _fieldValues[TrackField.Frames], out value);
+                        value += WriteArray(destination, field, animationData);
                     }
                     break;
 
@@ -79,7 +77,7 @@ namespace MediaEngine.Unpackers
                         break;
                     }
 
-                    string animationData = string.Empty;
+                    string unknown48 = string.Empty;
                     _fieldValues.TryGetValue(TrackField.Type, out var resourceType);
                     if (_fieldValues.ContainsKey(TrackField.UnknownByte41))
                     {
@@ -93,20 +91,16 @@ namespace MediaEngine.Unpackers
                                 objectType = source.ReadInt32();
 
                             var objectCount = source.ReadByte();
-                            animationData += $"Unknown{objectType}[{objectCount}] = " + string.Join(", ",
+                            unknown48 += $"Unknown{objectType}[{objectCount}] = " + string.Join(", ",
                                 Enumerable.Range(0, resourceType * objectCount).Select(e => source.ReadSingle())) + Environment.NewLine;
                         }
 
-                        value = animationData.Length.ToString();
+                        value = unknown48.Length.ToString();
                     }
-                    else
-                    {
-                        source.BaseStream.Position--;
-                        animationData = AnimationUnpacker.Unpack(source, (ResourceType)resourceType, _fieldValues[TrackField.Frames], out value);
-                    }
+                    else throw new InvalidDataException();
 
-                    _fieldValues[field] = animationData.Length;
-                    value += WriteArray(destination, field, animationData);
+                    _fieldValues[field] = unknown48.Length;
+                    value += WriteArray(destination, field, unknown48);
                     break;
 
                 case TrackField.Name:
@@ -175,7 +169,7 @@ namespace MediaEngine.Unpackers
                     var nextField = (TrackField)source.ReadByte();
                     source.BaseStream.Position--;
 
-                    if (nextField != TrackField.Index && nextField != TrackField.AnimatePosition)
+                    if (nextField != TrackField.Index && nextField != TrackField.AnimatePosition && nextField != TrackField.End)
                     {
                         source.BaseStream.Position -= 4;
                         value = Translator.ReadString(source) + Environment.NewLine;
