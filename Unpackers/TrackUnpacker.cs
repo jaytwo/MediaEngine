@@ -37,6 +37,12 @@ namespace MediaEngine.Unpackers
 
             switch (field)
             {
+                case TrackField.Frames:
+                    _fieldValues[field] = source.ReadInt32();
+                    if (_fieldValues[field] == 0 && source.ReadByte() != 255)
+                        source.BaseStream.Position--;
+                    break;
+
                 case TrackField.FrameBits:
                     if (!_fieldValues.Any())
                     {
@@ -233,7 +239,7 @@ namespace MediaEngine.Unpackers
 
         protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
         {
-            return false;
+            return source.BaseStream.Position == source.BaseStream.Length;
         }
     }
 }

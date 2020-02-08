@@ -28,7 +28,9 @@ namespace MediaEngine.Unpackers
                 TrackField.AnimatePosition,
                 TrackField.AnimateRotation,
                 TrackField.AnimateScale,
-                TrackField.UnknownArray34
+                TrackField.UnknownArray33,
+                TrackField.UnknownArray34,
+                TrackField.UnknownArray35
             };
 
             while (source.BaseStream.Position < source.BaseStream.Length - 1)
@@ -37,36 +39,46 @@ namespace MediaEngine.Unpackers
                 if (frameRepeats == 255)
                     break;
 
-                if (frameRepeats == (int)sections[0])
+                if (frameRepeats == (int)sections[0] || (sections[0] == TrackField.UnknownArray33 && frameRepeats == 34))
                 {
                     var nextByte = source.ReadByte();
                     source.BaseStream.Position--;
 
-                    if (firstObjRef == null || (frameRepeats == 34 && firstObjRef == nextByte) || frame + frameRepeats > frameCount)
+                    if (firstObjRef == null || (frameRepeats <= 34 && firstObjRef == nextByte) || frame + frameRepeats > frameCount)
                     {
                         field = (TrackField)frameRepeats;
                         destination.AppendLine(field.ToString());
+
+                        while (frameRepeats != (int)sections[0])
+                            sections.RemoveAt(0);
+
                         counts.Add(0);
                         sections.RemoveAt(0);
                         frame = 0;
 
-                        if (field != TrackField.UnknownArray34)
+                        if (field >= TrackField.AnimatePosition)
                             frameRepeats = source.ReadByte();
                     }
                 }
 
+                if (field == TrackField.UnknownArray33)
+                {
+                    ReadUnknownArray(source, destination, counts, 34);
+                    field = TrackField.UnknownArray34;
+                    destination.AppendLine(field.ToString());
+                }
+
                 if (field == TrackField.UnknownArray34)
                 {
-                    var bytes34 = new List<byte>();
-                    var b = source.ReadByte();
-                    while (b != 35)
-                    {
-                        bytes34.Add(b);
-                        counts[counts.Count - 1]++;
-                        b = source.ReadByte();
-                    }
+                    ReadUnknownArray(source, destination, counts, 35);
+                    field = TrackField.UnknownArray35;
+                    destination.AppendLine(field.ToString());
+                }
+
+                if (field == TrackField.UnknownArray35)
+                {
+                    ReadUnknownArray(source, destination, counts, 255);
                     source.BaseStream.Position--;
-                    destination.AppendLine("    " + string.Join(", ", bytes34));
                     break;
                 }
 
@@ -88,6 +100,21 @@ namespace MediaEngine.Unpackers
 
             description = string.Join(" + ", counts);
             return destination.ToString();
+        }
+
+        private static void ReadUnknownArray(BinaryReader source, StringBuilder destination, List<int> counts, byte end)
+        {
+            var bytes = new List<byte>();
+            var b = source.ReadByte();
+
+            while (b != end)
+            {
+                bytes.Add(b);
+                b = source.ReadByte();
+            }
+
+            destination.AppendLine("    " + string.Join(", ", bytes));
+            counts[counts.Count - 1] = bytes.Count;
         }
     }
 }
