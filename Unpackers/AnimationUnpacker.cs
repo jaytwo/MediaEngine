@@ -13,19 +13,15 @@ namespace MediaEngine.Unpackers
             var counts = new List<int>();
             var destination = new StringBuilder();
             var firstObjRef = new int?();
-            var emptyObjRef = 0;
             var frame = 0;
 
-            switch (resourceType)
+            var sections = new List<TrackField>
             {
-                case ResourceType.Bitmap:
-                    emptyObjRef = 1;
-                    break;
-
-                case ResourceType.Movie:
-                    emptyObjRef = -1;
-                    break;
-            }
+                TrackField.AnimatePosition,
+                TrackField.AnimateRotation,
+                TrackField.AnimateScale,
+                TrackField.UnknownArray34
+            };
 
             while (source.BaseStream.Position < source.BaseStream.Length - 1)
             {
@@ -33,23 +29,37 @@ namespace MediaEngine.Unpackers
                 if (frameRepeats == 255)
                     break;
 
-                if (frameRepeats == (int)field + 1)
+                if (frameRepeats == (int)sections[0])
                 {
                     var nextByte = source.ReadByte();
                     source.BaseStream.Position--;
 
-                    if (firstObjRef == null || firstObjRef == nextByte || firstObjRef == emptyObjRef)
+                    if (firstObjRef == null || firstObjRef == nextByte || frame + frameRepeats > frameCount)
                     {
                         field = (TrackField)frameRepeats;
                         destination.AppendLine(field.ToString());
                         counts.Add(0);
+                        sections.RemoveAt(0);
                         frame = 0;
 
-                        if (field == TrackField.AnimateScale && firstObjRef == emptyObjRef)
-                            break;
-
-                        frameRepeats = source.ReadByte();
+                        if (field != TrackField.UnknownArray34)
+                            frameRepeats = source.ReadByte();
                     }
+                }
+
+                if (field == TrackField.UnknownArray34)
+                {
+                    var bytes34 = new List<byte>();
+                    var b = source.ReadByte();
+                    while (b != 35)
+                    {
+                        bytes34.Add(b);
+                        counts[counts.Count - 1]++;
+                        b = source.ReadByte();
+                    }
+                    source.BaseStream.Position--;
+                    destination.AppendLine("    " + string.Join(", ", bytes34));
+                    break;
                 }
 
                 if (frameRepeats == 128)
@@ -58,8 +68,7 @@ namespace MediaEngine.Unpackers
                 if (firstObjRef == null)
                     firstObjRef = frameRepeats;
 
-                var length = firstObjRef == emptyObjRef ? 0 : source.ReadByte();
-                var content = Enumerable.Range(0, length * 3)
+                var content = Enumerable.Range(0, source.ReadByte() * 3)
                     .Select(i => source.ReadSingle())
                     .ToArray();
 

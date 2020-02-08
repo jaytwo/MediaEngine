@@ -126,9 +126,9 @@ namespace MediaEngine.Unpackers
                         if (!_fieldValues.ContainsKey(TrackField.Type) && section == TrackField.UnknownArray34)
                         {
                             var strings = new List<object>();
-                            for (int i = 0; source.ReadByte() != 255; i++)
+                            for (int i = 0; source.ReadUInt32() != UInt32.MaxValue; i++)
                             {
-                                source.BaseStream.Position--;
+                                source.BaseStream.Position -= 4;
                                 strings.Add(i % 3 == 1 ? Translator.ReadString(source) : source.ReadInt32().ToString());
                             }
 
