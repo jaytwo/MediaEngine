@@ -26,7 +26,6 @@ namespace MediaEngine.Unpackers
             var field = AnimationField.FrameBits;
             var counts = new List<int>();
             var destination = new StringBuilder();
-            var firstObjRef = new int?();
             var frame = 0;
 
             ReadBitArray(source, destination, field, counts, frameCount);
@@ -52,20 +51,22 @@ namespace MediaEngine.Unpackers
                     var nextByte = source.ReadByte();
                     source.BaseStream.Position--;
 
-                    if (firstObjRef == null || (frameRepeats <= 34 && firstObjRef == nextByte) || frame + frameRepeats > frameCount)
+                    if (field == AnimationField.FrameBits || frame + frameRepeats > frameCount)
                     {
                         field = (AnimationField)frameRepeats;
-                        destination.AppendLine(field.ToString());
 
                         while (frameRepeats != (int)sections[0])
                             sections.RemoveAt(0);
 
-                        counts.Add(0);
                         sections.RemoveAt(0);
+                        counts.Add(0);
                         frame = 0;
 
                         if (field >= AnimationField.Positions)
+                        {
+                            destination.AppendLine(field.ToString());
                             frameRepeats = source.ReadByte();
+                        }
                     }
                 }
 
@@ -77,9 +78,14 @@ namespace MediaEngine.Unpackers
                     field = (AnimationField)source.ReadByte();
                     if (field != AnimationField.RotationBits)
                         throw new InvalidDataException();
+                }
 
+                if (field == AnimationField.RotationBits)
+                {
                     ReadBitArray(source, destination, field, counts, counts[2]);
                     field = (AnimationField)source.ReadByte();
+                    if (field == AnimationField.End)
+                        break;
                     if (field != AnimationField.ScaleBits)
                         throw new InvalidDataException();
 
@@ -91,26 +97,8 @@ namespace MediaEngine.Unpackers
                     break;
                 }
 
-                if (field == AnimationField.RotationBits)
-                {
-                    var bytes = new List<byte>();
-                    var b = source.ReadByte();
-                    while (b != 35)
-                    {
-                        bytes.Add(b);
-                        b = source.ReadByte();
-                    }
-                    destination.AppendLine("    " + string.Join(", ", bytes));
-                    counts[counts.Count - 1] = bytes.Count;
-                    source.BaseStream.Position--;
-                    break;
-                }
-
                 if (frameRepeats == 128)
                     frameRepeats = source.ReadInt32();
-
-                if (firstObjRef == null)
-                    firstObjRef = frameRepeats;
 
                 var length = source.ReadByte();
                 var content = Enumerable.Range(0, length * 3)
@@ -118,7 +106,7 @@ namespace MediaEngine.Unpackers
                     .ToArray();
 
                 destination.AppendLine($"    Frames {frame}-{frame + frameRepeats}: " + string.Join(", ", content));
-                counts[counts.Count - 1]++;
+                counts[counts.Count - 1] += length;
                 frame += frameRepeats + length;
             }
 
