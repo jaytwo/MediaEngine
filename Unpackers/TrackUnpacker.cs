@@ -11,7 +11,7 @@ namespace MediaEngine.Unpackers
         Frames = 16,
         Type = 17,
         Index = 18,
-        FrameBits = 32,
+        Start = 32,
         UnknownArray33 = 33,
         UnknownArray34 = 34,
         UnknownArray35 = 35,
@@ -47,11 +47,22 @@ namespace MediaEngine.Unpackers
             {
                 case TrackField.Frames:
                     _fieldValues[field] = source.ReadInt32();
-                    if (_fieldValues[field] == 0 && source.ReadByte() != 255)
-                        source.BaseStream.Position--;
+                    if (_fieldValues[field] == 0)
+                    {
+                        if (source.ReadByte() != 255)
+                            source.BaseStream.Position--;
+                    }
+                    else if (!_fieldValues.ContainsKey(TrackField.UnknownByte41))
+                    {
+                        if (source.ReadByte() != 32)
+                            throw new InvalidDataException();
+
+                        var animationData = AnimationUnpacker.Unpack(source, _fieldValues[TrackField.Frames], out value);
+                        value += WriteArray(destination, field, animationData);
+                    }
                     break;
 
-                case TrackField.FrameBits:
+                case TrackField.Start:
                     if (!_fieldValues.Any())
                     {
                         // Start of track
@@ -60,19 +71,11 @@ namespace MediaEngine.Unpackers
 
                         _fieldValues[field] = source.ReadInt32();
                         _depth++;
+                        break;
                     }
-                    else if (!_fieldValues.ContainsKey(TrackField.Frames))
-                    {
-                        if (source.ReadByte() != 1)
-                            throw new InvalidDataException();
-                        return;
-                    }
-                    else
-                    {
-                        var animationData = AnimationUnpacker.Unpack(source, _fieldValues[TrackField.Frames], out value);
-                        value += WriteArray(destination, field, animationData);
-                    }
-                    break;
+                    if (source.ReadByte() != 1)
+                        throw new InvalidDataException();
+                    return;
 
                 case TrackField.UnknownArray35:
                     var ints = ReadArray(source, field, s => source.ReadInt32());
@@ -187,7 +190,7 @@ namespace MediaEngine.Unpackers
                     break;
             }
 
-            if (field == TrackField.FrameBits && _fieldValues.Count == 1)
+            if (field == TrackField.Start && _fieldValues.Count == 1)
                 destination.Write(Encoding.UTF8.GetBytes($"-- TRACK ({_fieldValues[field]}) --\r\n"));
             else if (field == TrackField.End)
                 destination.Write(Encoding.UTF8.GetBytes("\r\n"));
