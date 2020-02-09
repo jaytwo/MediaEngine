@@ -19,9 +19,9 @@ namespace MediaEngine.Unpackers
         UnknownArray38 = 38,
         UnknownByte41 = 41,
         UnknownArray42 = 42,
-        AnimatePosition = 48,
-        AnimateRotation = 49,
-        AnimateScale = 50,
+        UnknownByte48 = 48,
+        UnknownByte49 = 49,
+        UnknownByte50 = 50,
         UnknownInt51 = 51,
         UnknownInt52 = 52,
         Name = 64,
@@ -31,6 +31,14 @@ namespace MediaEngine.Unpackers
 
     class TrackUnpacker : Unpacker<TrackField>
     {
+        private readonly string _path;
+        private int _depth;
+
+        public TrackUnpacker(string path)
+        {
+            _path = path;
+        }
+
         protected override void Unpack(BinaryReader source, BinaryWriter destination, TrackField field)
         {
             string value = null;
@@ -51,6 +59,7 @@ namespace MediaEngine.Unpackers
                             throw new InvalidDataException();
 
                         _fieldValues[field] = source.ReadInt32();
+                        _depth++;
                     }
                     else if (!_fieldValues.ContainsKey(TrackField.Frames))
                     {
@@ -75,18 +84,12 @@ namespace MediaEngine.Unpackers
                     _fieldValues[field] = source.ReadByte();
                     break;
 
-                case TrackField.AnimatePosition:
-                case TrackField.AnimateRotation:
-                    if (_fieldValues.ContainsKey(TrackField.UnknownArray35))
-                    {
-                        _fieldValues[field] = source.ReadByte();
-                        break;
-                    }
-
+                case TrackField.UnknownByte48:
+                case TrackField.UnknownByte49:
                     string unknown48 = string.Empty;
-                    _fieldValues.TryGetValue(TrackField.Type, out var resourceType);
                     if (_fieldValues.ContainsKey(TrackField.UnknownByte41))
                     {
+                        _fieldValues.TryGetValue(TrackField.Type, out var resourceType);
                         while (true)
                         {
                             var objectType = (int)source.ReadByte();
@@ -102,11 +105,11 @@ namespace MediaEngine.Unpackers
                         }
 
                         value = unknown48.Length.ToString();
+                        _fieldValues[field] = unknown48.Length;
+                        value += WriteArray(destination, field, unknown48);
                     }
-                    else throw new InvalidDataException();
+                    else _fieldValues[field] = source.ReadByte();
 
-                    _fieldValues[field] = unknown48.Length;
-                    value += WriteArray(destination, field, unknown48);
                     break;
 
                 case TrackField.Name:
@@ -171,16 +174,8 @@ namespace MediaEngine.Unpackers
                 case TrackField.Type:
                     _fieldValues[field] = source.ReadInt32();
                     value = ((ResourceType)_fieldValues[field]).ToString();
-
-                    var nextField = (TrackField)source.ReadByte();
-                    source.BaseStream.Position--;
-
-                    if (nextField != TrackField.Index && nextField != TrackField.AnimatePosition && nextField != TrackField.End)
-                    {
-                        source.BaseStream.Position -= 4;
-                        value = Translator.ReadString(source) + Environment.NewLine;
-                        _fieldValues.Clear();
-                    }
+                    if (_fieldValues.ContainsKey(TrackField.UnknownByte41) && source.ReadByte() != 255)
+                        source.BaseStream.Position--;
                     break;
 
                 case TrackField.End:
@@ -231,7 +226,7 @@ namespace MediaEngine.Unpackers
                 fileName += "-" + ((ResourceType)t).ToString();
             fileName += "-" + field.ToString() + ".txt";
 
-            using (var writer = new BinaryWriter(File.Create(Path.Combine(Path.GetDirectoryName(destinationStream.Name), fileName))))
+            using (var writer = new BinaryWriter(File.Create(Path.Combine(_path, fileName))))
                 writer.Write(Encoding.UTF8.GetBytes(s));
 
             return $" ({fileName})";
@@ -239,7 +234,9 @@ namespace MediaEngine.Unpackers
 
         protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
         {
-            return source.BaseStream.Position == source.BaseStream.Length;
+            return --_depth < 0;
         }
+
+        protected override void OnStart(ref BinaryReader source, BinaryWriter destination) { }
     }
 }

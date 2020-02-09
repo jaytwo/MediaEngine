@@ -7,30 +7,38 @@ using System.Text;
 
 namespace MediaEngine.Unpackers
 {
+    enum AnimationField
+    {
+        FrameBits = 32,
+        PositionBits = 33,
+        RotationBits = 34,
+        ScaleBits = 35,
+        Positions = 48,
+        Rotations = 49,
+        Scales = 50,
+        End = 255
+    }
+
     static class AnimationUnpacker
     {
         public static string Unpack(BinaryReader source, int frameCount, out string description)
         {
-            var frameBits = new BitArray(source.ReadBytes((int)Math.Ceiling(frameCount / 8.0)));
-            frameBits.Length = frameCount;
-
+            var field = AnimationField.FrameBits;
+            var counts = new List<int>();
             var destination = new StringBuilder();
-            destination.AppendLine(TrackField.FrameBits.ToString());
-            destination.AppendLine($"    Bits[{frameBits.Length}]: " + string.Join(string.Empty, frameBits.Cast<bool>().Select(b => b ? "1" : "0")));
-
-            var counts = new List<int>{ frameBits.Length };
             var firstObjRef = new int?();
-            var field = (TrackField)47;
             var frame = 0;
 
-            var sections = new List<TrackField>
+            ReadBitArray(source, destination, field, counts, frameCount);
+
+            var sections = new List<AnimationField>
             {
-                TrackField.AnimatePosition,
-                TrackField.AnimateRotation,
-                TrackField.AnimateScale,
-                TrackField.UnknownArray33,
-                TrackField.UnknownArray34,
-                TrackField.UnknownArray35
+                AnimationField.Positions,
+                AnimationField.Rotations,
+                AnimationField.Scales,
+                AnimationField.PositionBits,
+                AnimationField.RotationBits,
+                AnimationField.ScaleBits
             };
 
             while (source.BaseStream.Position < source.BaseStream.Length - 1)
@@ -39,14 +47,14 @@ namespace MediaEngine.Unpackers
                 if (frameRepeats == 255)
                     break;
 
-                if (frameRepeats == (int)sections[0] || (sections[0] == TrackField.UnknownArray33 && frameRepeats == 34))
+                if (frameRepeats == (int)sections[0] || (sections[0] == AnimationField.PositionBits && frameRepeats == 34))
                 {
                     var nextByte = source.ReadByte();
                     source.BaseStream.Position--;
 
                     if (firstObjRef == null || (frameRepeats <= 34 && firstObjRef == nextByte) || frame + frameRepeats > frameCount)
                     {
-                        field = (TrackField)frameRepeats;
+                        field = (AnimationField)frameRepeats;
                         destination.AppendLine(field.ToString());
 
                         while (frameRepeats != (int)sections[0])
@@ -56,28 +64,44 @@ namespace MediaEngine.Unpackers
                         sections.RemoveAt(0);
                         frame = 0;
 
-                        if (field >= TrackField.AnimatePosition)
+                        if (field >= AnimationField.Positions)
                             frameRepeats = source.ReadByte();
                     }
                 }
 
-                if (field == TrackField.UnknownArray33)
+                if (field == AnimationField.PositionBits)
                 {
-                    ReadUnknownArray(source, destination, counts, 34);
-                    field = TrackField.UnknownArray34;
-                    destination.AppendLine(field.ToString());
+                    counts.RemoveAt(counts.Count - 1);
+
+                    ReadBitArray(source, destination, field, counts, counts[1]);
+                    field = (AnimationField)source.ReadByte();
+                    if (field != AnimationField.RotationBits)
+                        throw new InvalidDataException();
+
+                    ReadBitArray(source, destination, field, counts, counts[2]);
+                    field = (AnimationField)source.ReadByte();
+                    if (field != AnimationField.ScaleBits)
+                        throw new InvalidDataException();
+
+                    ReadBitArray(source, destination, field, counts, counts[3]);
+                    field = (AnimationField)source.ReadByte();
+                    if (field != AnimationField.End)
+                        throw new InvalidDataException();
+
+                    break;
                 }
 
-                if (field == TrackField.UnknownArray34)
+                if (field == AnimationField.RotationBits)
                 {
-                    ReadUnknownArray(source, destination, counts, 35);
-                    field = TrackField.UnknownArray35;
-                    destination.AppendLine(field.ToString());
-                }
-
-                if (field == TrackField.UnknownArray35)
-                {
-                    ReadUnknownArray(source, destination, counts, 255);
+                    var bytes = new List<byte>();
+                    var b = source.ReadByte();
+                    while (b != 35)
+                    {
+                        bytes.Add(b);
+                        b = source.ReadByte();
+                    }
+                    destination.AppendLine("    " + string.Join(", ", bytes));
+                    counts[counts.Count - 1] = bytes.Count;
                     source.BaseStream.Position--;
                     break;
                 }
@@ -102,19 +126,14 @@ namespace MediaEngine.Unpackers
             return destination.ToString();
         }
 
-        private static void ReadUnknownArray(BinaryReader source, StringBuilder destination, List<int> counts, byte end)
+        private static void ReadBitArray(BinaryReader source, StringBuilder destination, AnimationField field, List<int> counts, int count)
         {
-            var bytes = new List<byte>();
-            var b = source.ReadByte();
+            var bits = new BitArray(source.ReadBytes((int)Math.Ceiling(count / 8.0)));
+            bits.Length = count;
+            counts.Add(count);
 
-            while (b != end)
-            {
-                bytes.Add(b);
-                b = source.ReadByte();
-            }
-
-            destination.AppendLine("    " + string.Join(", ", bytes));
-            counts[counts.Count - 1] = bytes.Count;
+            destination.AppendLine(field.ToString());
+            destination.AppendLine($"    Bits[{bits.Length}]: " + string.Join(string.Empty, bits.Cast<bool>().Select(b => b ? "1" : "0")));
         }
     }
 }

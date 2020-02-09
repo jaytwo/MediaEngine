@@ -13,7 +13,7 @@
         Movie = 9,
         Sound3d = 11,
         Ear = 13,
-        Track = 32,
+        Score = 32,
         Header = 224,
         Script = 255 // Should be 6!
     }
