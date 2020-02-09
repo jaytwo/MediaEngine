@@ -120,7 +120,25 @@ namespace MediaEngine.Unpackers
                     break;
 
                 case TrackField.UnknownArray33:
+                    if (_depth > 0)
+                        goto case TrackField.UnknownArray37;
+
+                    value = ReadArray(source, field, s => source.ReadByte()) + Environment.NewLine;
+                    break;
+
                 case TrackField.UnknownArray34:
+                    if (_depth > 0)
+                        goto case TrackField.UnknownArray37;
+
+                    var strings = new List<object>();
+                    for (int i = 0; source.ReadUInt32() != UInt32.MaxValue; i++)
+                    {
+                        source.BaseStream.Position -= 4;
+                        strings.Add($"    {source.ReadInt32()}, {Translator.ReadString(source)}, {source.ReadInt32()}");
+                    }
+                    value = strings.Count + " {\r\n" + string.Join(Environment.NewLine, strings) + Environment.NewLine + "}";
+                    break;
+
                 case TrackField.UnknownArray37:
                 case TrackField.UnknownArray38:
                     var section = field;
@@ -129,33 +147,14 @@ namespace MediaEngine.Unpackers
 
                     while (true)
                     {
-                        if (!_fieldValues.ContainsKey(TrackField.Type) && section == TrackField.UnknownArray34)
+                        counts.Add(0);
+                        txt += ReadArray(source, section, s =>
                         {
-                            var strings = new List<object>();
-                            for (int i = 0; source.ReadUInt32() != UInt32.MaxValue; i++)
-                            {
-                                source.BaseStream.Position -= 4;
-                                strings.Add(i % 3 == 1 ? Translator.ReadString(source) : source.ReadInt32().ToString());
-                            }
+                            counts[counts.Count - 1]++;
+                            return (section == TrackField.UnknownArray34 || section == TrackField.UnknownArray35) ?
+                                source.ReadInt32() : source.ReadInt64();
+                        });
 
-                            source.BaseStream.Position--;
-                            counts.Add(strings.Count);
-                            txt += ReadArray(strings.ToArray(), field);
-                        }
-                        else
-                        {
-                            counts.Add(0);
-                            txt += ReadArray(source, section, s =>
-                            {
-                                counts[counts.Count - 1]++;
-                                if (!_fieldValues.ContainsKey(TrackField.Type) && section == TrackField.UnknownArray33)
-                                    return source.ReadByte();
-                                else if (section == TrackField.UnknownArray34 || section == TrackField.UnknownArray35)
-                                    return source.ReadInt32();
-                                else
-                                    return source.ReadInt64();
-                            });
-                        }
                         txt += Environment.NewLine;
                         section = (TrackField)source.ReadByte();
 
@@ -212,11 +211,6 @@ namespace MediaEngine.Unpackers
                 .Select(i => read(source))
                 .ToArray();
 
-            return ReadArray(items, field);
-        }
-
-        private string ReadArray(object[] items, TrackField field)
-        {
             return $"Section {(int)field}" + Environment.NewLine +
                 "    Objects[" + items.Length + "] = " + string.Join(", ", items);
         }
