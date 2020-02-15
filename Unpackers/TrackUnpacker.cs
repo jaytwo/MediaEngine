@@ -219,8 +219,13 @@ namespace MediaEngine.Unpackers
         {
             var destinationStream = (FileStream)destination.BaseStream;
             var fileName = destinationStream.Position.ToString();
+
             if (_fieldValues.TryGetValue(TrackField.Type, out var t))
                 fileName += "-" + ((ResourceType)t).ToString();
+
+            if (_fieldValues.TryGetValue(TrackField.Index, out t))
+                fileName += "-" + t.ToString();
+
             fileName += "-" + field.ToString() + ".txt";
 
             using (var writer = new BinaryWriter(File.Create(Path.Combine(_path, fileName))))

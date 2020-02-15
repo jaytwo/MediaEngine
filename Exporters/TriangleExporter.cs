@@ -34,8 +34,6 @@ namespace MediaEngine.Exporters
 
             foreach (var i in objectIndices)
             {
-                var group = groups[i];
-                var name = Encoding.UTF8.GetBytes(group[ModelField.GroupName].ToString());
                 var faces = faceVertices;
 
                 if (faceGroupIds != null)

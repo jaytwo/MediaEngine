@@ -1,9 +1,10 @@
-﻿using MediaEngine.Unpackers;
+﻿using lib3ds.Net;
+using MediaEngine.Unpackers;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Text;
 
 namespace MediaEngine.Exporters
 {
@@ -14,7 +15,9 @@ namespace MediaEngine.Exporters
     {
         public static void Export(List<Group> groups, List<float[]> allVertices, List<short[]> allFaces, short[] faceGroupIds, BinaryWriter destination)
         {
+            var file = LIB3DS.lib3ds_file_new();
             var textureGroups = new Dictionary<int, List<Group>>();
+
             foreach (var group in groups)
             {
                 var groupId = (int)group[ModelField.TextureGroup];
@@ -27,145 +30,108 @@ namespace MediaEngine.Exporters
 
                 textureGroup.Add(group);
                 group.TextureGroup = textureGroup;
+
+                // TODO: Hierarchy of object
+                var node = LIB3DS.lib3ds_node_new(Lib3dsNodeType.LIB3DS_NODE_MESH_INSTANCE);
+                node.name = group[ModelField.GroupName].ToString();
+                node.node_id = (ushort)file.nodes.Count;
+                file.nodes.Add(node);
             }
 
             var objectIndices = (faceGroupIds == null ? Enumerable.Range(0, groups.Count) :
-            faceGroupIds.Distinct().Select(b => (int)b)).ToArray();
+                faceGroupIds.Distinct().Select(b => (int)b)).ToArray();
 
-            var materials = MaterialExporter.Export(groups);
-            var hierarchies = HierarchyExporter.Export(groups);
+            MaterialExporter.Export(groups, file);
+
             var facesByObject = TriangleExporter.Export(groups, allFaces, faceGroupIds, objectIndices);
 
-            var objects = new MemoryStream();
+            foreach (var i in objectIndices)
+            {
+                var group = groups[i];
+                var name = group[ModelField.GroupName].ToString();
+                var faces = facesByObject[i];
 
-            using (var writer = new BinaryWriter(objects, Encoding.ASCII, true))
-                foreach (var i in objectIndices)
+                var mesh = LIB3DS.lib3ds_mesh_new(name);
+                file.meshes.Add(mesh);
+
+                var useTexVerts = faces.Count != 0;
+                LIB3DS.lib3ds_mesh_resize_vertices(mesh, (ushort)allVertices.Count, useTexVerts, false);
+
+                for (int j = 0; j < allVertices.Count; j++)
+                    LIB3DS.lib3ds_vector_copy(mesh.vertices[j], allVertices[j]);
+
+                if (useTexVerts)
                 {
-                    var group = groups[i];
-                    var name = Encoding.UTF8.GetBytes(group[ModelField.GroupName].ToString());
-                    var materialFaces = new MemoryStream();
-                    var faces = facesByObject[i];
+                    var usedVertices = group.TextureGroup
+                        .Select(g => groups.IndexOf(g))
+                        .SelectMany(g => facesByObject[g])
+                        .SelectMany(f => f.Take(3))
+                        .Distinct()
+                        .Select(v => allVertices[v])
+                        .ToArray();
 
-                    if (faceGroupIds != null)
-                        using (var faceWriter = new BinaryWriter(materialFaces, Encoding.ASCII, true))
-                        {
-                            faceWriter.Write((ushort)ChunkType.MSH_MAT_GROUP);
-                            faceWriter.Write(faces.Count * 2 + name.Length + 9); // chunk length
-                            faceWriter.Write(name); // material name
-                            faceWriter.Write((byte)0); // name terminator
-                            faceWriter.Write((short)faces.Count);
+                    var minX = usedVertices.Min(v => v[0]);
+                    var minY = usedVertices.Min(v => v[1]);
+                    var minZ = usedVertices.Min(v => v[2]);
+                    var maxX = usedVertices.Max(v => v[0]);
+                    var maxY = usedVertices.Max(v => v[1]);
+                    var maxZ = usedVertices.Max(v => v[2]);
 
-                            foreach (var triangleIndex in Enumerable.Range(0, faces.Count))
-                                faceWriter.Write((ushort)triangleIndex);
-                        }
+                    var objectMin = new Vector3(minX, minY, minZ);
+                    var objectScale = new Vector3(maxX - minX, maxY - minY, maxZ - minZ);
 
-                    var useTexVerts = faces.Count != 0;
-                    var texVertsLength = useTexVerts ? (allVertices.Count * 8 + 8) : 0;
-                    var facesLength = (int)materialFaces.Length + (faces.Count * 8) + 8;
-                    var meshLength = texVertsLength + facesLength + (allVertices.Count * 12) + 14;
+                    if (objectScale.X < 0.001f)
+                        objectScale.X = 1;
+                    if (objectScale.Y < 0.001f)
+                        objectScale.Y = 1;
+                    if (objectScale.Z < 0.001f)
+                        objectScale.Z = 1;
 
-                    writer.Write((ushort)ChunkType.NAMED_OBJECT);
-                    writer.Write(meshLength + 7 + name.Length); // chunk length
-                    writer.Write(name); // object name
-                    writer.Write((byte)0); // name terminator
+                    var division = new Vector3(
+                        (float)group[ModelField.TextureDivisionU],
+                        (float)group[ModelField.TextureDivisionV],
+                        1);
 
-                    writer.Write((ushort)ChunkType.N_TRI_OBJECT);
-                    writer.Write(meshLength); // chunk length
+                    var position = new Vector3(
+                        (float)group[ModelField.TexturePositionU],
+                        (float)group[ModelField.TexturePositionV],
+                        0);
 
-                    writer.Write((ushort)ChunkType.POINT_ARRAY);
-                    writer.Write(allVertices.Count * 12 + 8); // chunk length
-                    writer.Write((ushort)allVertices.Count); // total vertices
+                    var quaternionX = Quaternion.CreateFromYawPitchRoll(0, -(float)group[ModelField.TextureRotateX], 0);
+                    var quaternionY = Quaternion.CreateFromYawPitchRoll(-(float)group[ModelField.TextureRotateY], 0, 0);
+                    var quaternionZ = Quaternion.CreateFromYawPitchRoll(0, 0, -(float)group[ModelField.TextureRotateZ]);
 
-                    foreach (var vertex in allVertices)
-                        foreach (var offset in vertex)
-                            writer.Write(offset);
+                    var quaternion = Quaternion.Multiply(quaternionX, quaternionY);
+                    var rotation = Matrix4x4.CreateFromQuaternion(Quaternion.Multiply(quaternion, quaternionZ));
 
-                    if (useTexVerts)
+                    for (int v = 0; v < allVertices.Count; v++)
                     {
-                        writer.Write((ushort)ChunkType.TEX_VERTS);
-                        writer.Write(texVertsLength); // chunk length
-                        writer.Write((ushort)allVertices.Count); // total vertices
+                        var vector = new Vector3(allVertices[v][0], allVertices[v][1], allVertices[v][2]);
+                        vector -= objectMin;
+                        vector /= objectScale;
 
-                        var usedVertices = group.TextureGroup
-                            .Select(g => groups.IndexOf(g))
-                            .SelectMany(g => facesByObject[g])
-                            .SelectMany(f => f.Take(3))
-                            .Distinct()
-                            .Select(v => allVertices[v])
-                            .ToArray();
+                        vector = Vector3.Transform(vector, rotation);
+                        vector *= division;
+                        vector -= position;
 
-                        var minX = usedVertices.Min(v => v[0]);
-                        var minY = usedVertices.Min(v => v[1]);
-                        var minZ = usedVertices.Min(v => v[2]);
-                        var maxX = usedVertices.Max(v => v[0]);
-                        var maxY = usedVertices.Max(v => v[1]);
-                        var maxZ = usedVertices.Max(v => v[2]);
-
-                        var objectMin = new Vector3(minX, minY, minZ);
-                        var objectScale = new Vector3(maxX - minX, maxY - minY, maxZ - minZ);
-
-                        if (objectScale.X < 0.001f)
-                            objectScale.X = 1;
-                        if (objectScale.Y < 0.001f)
-                            objectScale.Y = 1;
-                        if (objectScale.Z < 0.001f)
-                            objectScale.Z = 1;
-
-                        var division = new Vector3(
-                            (float)group[ModelField.TextureDivisionU],
-                            (float)group[ModelField.TextureDivisionV],
-                            1);
-
-                        var position = new Vector3(
-                            (float)group[ModelField.TexturePositionU],
-                            (float)group[ModelField.TexturePositionV],
-                            0);
-
-                        var quaternionX = Quaternion.CreateFromYawPitchRoll(0, -(float)group[ModelField.TextureRotateX], 0);
-                        var quaternionY = Quaternion.CreateFromYawPitchRoll(-(float)group[ModelField.TextureRotateY], 0, 0);
-                        var quaternionZ = Quaternion.CreateFromYawPitchRoll(0, 0, -(float)group[ModelField.TextureRotateZ]);
-
-                        var quaternion = Quaternion.Multiply(quaternionX, quaternionY);
-                        var rotation = Matrix4x4.CreateFromQuaternion(Quaternion.Multiply(quaternion, quaternionZ));
-
-                        foreach (var v in allVertices)
-                        {
-                            var vector = new Vector3(v[0], v[1], v[2]);
-                            vector -= objectMin;
-                            vector /= objectScale;
-
-                            vector = Vector3.Transform(vector, rotation);
-                            vector *= division;
-                            vector -= position;
-
-                            writer.Write(vector.X);
-                            writer.Write(vector.Y);
-                        }
+                        mesh.texcos[v] = new Lib3dsTexturecoordinate(vector.X, vector.Y);
                     }
-
-                    writer.Write((ushort)ChunkType.FACE_ARRAY);
-                    writer.Write(facesLength); // chunk length
-                    writer.Write((ushort)faces.Count); // total polygons
-
-                    foreach (var face in faces)
-                        foreach (var vertex in face)
-                            writer.Write(vertex);
-
-                    writer.Write(materialFaces.ToArray());
                 }
 
-            destination.Write((ushort)ChunkType.M3DMAGIC);
-            destination.Write((int)(objects.Length + materials.Length + hierarchies.Length + 18)); // chunk length
+                LIB3DS.lib3ds_mesh_resize_faces(mesh, (ushort)faces.Count);
+                for (int face = 0; face < faces.Count; face++)
+                {
+                    for (int j = 0; j < 3; j++)
+                        mesh.faces[face].index[j] = (ushort)faces[face][j];
 
-            destination.Write((ushort)ChunkType.MDATA);
-            destination.Write((int)(objects.Length + materials.Length + 6)); // chunk length
-            destination.Write(materials.ToArray());
+                    mesh.faces[face].material = i;
+                }
+            }
 
-            destination.Write(objects.ToArray());
+            if (!LIB3DS.lib3ds_file_save(file, destination.BaseStream))
+                throw new Exception("Saving 3ds file failed");
 
-            destination.Write((ushort)ChunkType.KFDATA);
-            destination.Write((int)hierarchies.Length + 6); // chunk length
-            destination.Write(hierarchies.ToArray());
+            LIB3DS.lib3ds_file_free(file);
         }
     }
 }
