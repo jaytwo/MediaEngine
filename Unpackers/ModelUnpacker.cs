@@ -1,4 +1,5 @@
-﻿using MediaEngine.Exporters;
+﻿using lib3ds.Net;
+using MediaEngine.Exporters;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -70,8 +71,8 @@ namespace MediaEngine.Unpackers
     {
         private short[] _faceGroups;
 
-        private readonly List<float[]> _vertices = new List<float[]>();
-        private readonly List<short[]> _faces = new List<short[]>();
+        private readonly List<Lib3dsVertex> _vertices = new List<Lib3dsVertex>();
+        private readonly List<ushort[]> _faces = new List<ushort[]>();
         private readonly List<Group> _groups = new List<Group>();
 
         private Group _group;
@@ -95,19 +96,19 @@ namespace MediaEngine.Unpackers
 
                 case ModelField.Vertices:
                     _vertices.AddRange(Enumerable.Range(0, (int)_group[ModelField.VertexCount])
-                        .Select(i => new[] { source.ReadSingle(), source.ReadSingle(), source.ReadSingle() })
+                        .Select(i => new Lib3dsVertex(source.ReadSingle(), source.ReadSingle(), source.ReadSingle()))
                         .ToList());
                     break;
 
                 case ModelField.FacesSingle:
                     _group[field] = source.ReadByte();
                     var indices = source.ReadBytes((int)_group[ModelField.IndexCount]);
-                    UnpackFaces(indices.Select(b => (short)b).ToArray());
+                    UnpackFaces(indices.Select(b => (ushort)b).ToArray());
                     break;
 
                 case ModelField.FacesDouble:
                     UnpackFaces(Enumerable.Range(0, (int)_group[ModelField.IndexCount])
-                        .Select(i => source.ReadInt16()).ToArray());
+                        .Select(i => source.ReadUInt16()).ToArray());
 
                     if ((int)_group[ModelField.IndexCount] != 0)
                     {
@@ -213,7 +214,7 @@ namespace MediaEngine.Unpackers
             }
         }
 
-        private void UnpackFaces(short[] indices)
+        private void UnpackFaces(ushort[] indices)
         {
             var i = 0;
             while (i < indices.Length)

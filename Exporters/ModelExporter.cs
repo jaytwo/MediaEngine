@@ -13,7 +13,7 @@ namespace MediaEngine.Exporters
     /// </summary>
     static class ModelExporter
     {
-        public static void Export(List<Group> groups, List<float[]> allVertices, List<short[]> allFaces, short[] faceGroupIds, BinaryWriter destination)
+        public static void Export(List<Group> groups, List<Lib3dsVertex> vertices, List<ushort[]> allFaces, short[] faceGroupIds, BinaryWriter destination)
         {
             var file = LIB3DS.lib3ds_file_new();
             var textureGroups = new Dictionary<int, List<Group>>();
@@ -43,39 +43,35 @@ namespace MediaEngine.Exporters
 
             MaterialExporter.Export(groups, file);
 
-            var facesByObject = TriangleExporter.Export(groups, allFaces, faceGroupIds, objectIndices);
+            var facesByObject = TriangleExporter.Export(allFaces, faceGroupIds, objectIndices);
 
             foreach (var i in objectIndices)
             {
                 var group = groups[i];
-                var name = group[ModelField.GroupName].ToString();
                 var faces = facesByObject[i];
 
-                var mesh = LIB3DS.lib3ds_mesh_new(name);
+                var mesh = LIB3DS.lib3ds_mesh_new(group[ModelField.GroupName].ToString());
+                mesh.vertices = vertices;
+                mesh.nvertices = (ushort)vertices.Count;
+                mesh.texcos = new List<Lib3dsTexturecoordinate>();
                 file.meshes.Add(mesh);
 
-                var useTexVerts = faces.Count != 0;
-                LIB3DS.lib3ds_mesh_resize_vertices(mesh, (ushort)allVertices.Count, useTexVerts, false);
-
-                for (int j = 0; j < allVertices.Count; j++)
-                    LIB3DS.lib3ds_vector_copy(mesh.vertices[j], allVertices[j]);
-
-                if (useTexVerts)
+                if (faces.Count != 0)
                 {
                     var usedVertices = group.TextureGroup
                         .Select(g => groups.IndexOf(g))
                         .SelectMany(g => facesByObject[g])
-                        .SelectMany(f => f.Take(3))
+                        .SelectMany(f => f.index)
                         .Distinct()
-                        .Select(v => allVertices[v])
+                        .Select(v => vertices[v])
                         .ToArray();
 
-                    var minX = usedVertices.Min(v => v[0]);
-                    var minY = usedVertices.Min(v => v[1]);
-                    var minZ = usedVertices.Min(v => v[2]);
-                    var maxX = usedVertices.Max(v => v[0]);
-                    var maxY = usedVertices.Max(v => v[1]);
-                    var maxZ = usedVertices.Max(v => v[2]);
+                    var minX = usedVertices.Min(v => v.x);
+                    var minY = usedVertices.Min(v => v.y);
+                    var minZ = usedVertices.Min(v => v.z);
+                    var maxX = usedVertices.Max(v => v.x);
+                    var maxY = usedVertices.Max(v => v.y);
+                    var maxZ = usedVertices.Max(v => v.z);
 
                     var objectMin = new Vector3(minX, minY, minZ);
                     var objectScale = new Vector3(maxX - minX, maxY - minY, maxZ - minZ);
@@ -87,16 +83,6 @@ namespace MediaEngine.Exporters
                     if (objectScale.Z < 0.001f)
                         objectScale.Z = 1;
 
-                    var division = new Vector3(
-                        (float)group[ModelField.TextureDivisionU],
-                        (float)group[ModelField.TextureDivisionV],
-                        1);
-
-                    var position = new Vector3(
-                        (float)group[ModelField.TexturePositionU],
-                        (float)group[ModelField.TexturePositionV],
-                        0);
-
                     var quaternionX = Quaternion.CreateFromYawPitchRoll(0, -(float)group[ModelField.TextureRotateX], 0);
                     var quaternionY = Quaternion.CreateFromYawPitchRoll(-(float)group[ModelField.TextureRotateY], 0, 0);
                     var quaternionZ = Quaternion.CreateFromYawPitchRoll(0, 0, -(float)group[ModelField.TextureRotateZ]);
@@ -104,34 +90,26 @@ namespace MediaEngine.Exporters
                     var quaternion = Quaternion.Multiply(quaternionX, quaternionY);
                     var rotation = Matrix4x4.CreateFromQuaternion(Quaternion.Multiply(quaternion, quaternionZ));
 
-                    for (int v = 0; v < allVertices.Count; v++)
+                    for (int v = 0; v < vertices.Count; v++)
                     {
-                        var vector = new Vector3(allVertices[v][0], allVertices[v][1], allVertices[v][2]);
+                        var vector = new Vector3(vertices[v].x, vertices[v].y, vertices[v].z);
                         vector -= objectMin;
                         vector /= objectScale;
-
                         vector = Vector3.Transform(vector, rotation);
-                        vector *= division;
-                        vector -= position;
 
-                        mesh.texcos[v] = new Lib3dsTexturecoordinate(vector.X, vector.Y);
+                        mesh.texcos.Add(new Lib3dsTexturecoordinate(vector.X, vector.Y));
                     }
-                }
 
-                LIB3DS.lib3ds_mesh_resize_faces(mesh, (ushort)faces.Count);
-                for (int face = 0; face < faces.Count; face++)
-                {
-                    for (int j = 0; j < 3; j++)
-                        mesh.faces[face].index[j] = (ushort)faces[face][j];
+                    foreach (var face in faces)
+                        face.material = i;
 
-                    mesh.faces[face].material = i;
+                    mesh.faces = faces;
+                    mesh.nfaces = (ushort)faces.Count;
                 }
             }
 
             if (!LIB3DS.lib3ds_file_save(file, destination.BaseStream))
                 throw new Exception("Saving 3ds file failed");
-
-            LIB3DS.lib3ds_file_free(file);
         }
     }
 }

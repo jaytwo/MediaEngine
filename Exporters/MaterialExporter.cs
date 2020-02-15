@@ -36,8 +36,10 @@ namespace MediaEngine.Exporters
 				{
 					material.texture1_map.name = $"..\\Texture\\{textureId}.png";
 					material.texture1_map.percent = 1.0f;
-					material.texture1_map.scale[0] = 1.0f;
-					material.texture1_map.scale[1] = 1.0f;
+					material.texture1_map.scale[0] = (float)group[ModelField.TextureDivisionU];
+					material.texture1_map.scale[1] = (float)group[ModelField.TexturePositionV];
+					material.texture1_map.offset[0] = (float)group[ModelField.TexturePositionU];
+					material.texture1_map.offset[1] = (float)group[ModelField.TexturePositionV];
 					material.texture1_map.flags = Lib3dsTextureMapFlags.LIB3DS_TEXTURE_SUMMED_AREA;
 				}
 			}

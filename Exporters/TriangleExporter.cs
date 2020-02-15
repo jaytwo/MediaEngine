@@ -1,52 +1,48 @@
-﻿using MediaEngine.Unpackers;
+﻿using lib3ds.Net;
 using System.Collections.Generic;
-using System.Text;
 
 namespace MediaEngine.Exporters
 {
     static class TriangleExporter
     {
-        public static Dictionary<int, List<short[]>> Export(List<Group> groups, List<short[]> allFaces, short[] faceGroupIds, int[] objectIndices)
+        public static Dictionary<int, List<Lib3dsFace>> Export(List<ushort[]> faces, short[] faceGroupIds, int[] objectIndices)
         {
-            var faceIndex = 0;
-            short triangleCount = 0;
+            var equivalentTriangles = new List<int>[faces.Count];
+            var triangleFaces = new List<Lib3dsFace>();
 
-            var triangles = new List<short>[allFaces.Count];
-            var faceVertices = new List<short[]>();
-            
-            foreach (var face in allFaces)
+            for (int i = 0; i < faces.Count; i++)
             {
-                // Reverse winding direction
-                triangles[faceIndex] = new List<short>(new[] { triangleCount++ });
-                faceVertices.Add(new[] { face[1], face[3], face[2], (short)0 });
+                var face = faces[i];
 
-                // Convert quads
+                // Reverse winding direction
+                equivalentTriangles[i] = new List<int>(new[] { triangleFaces.Count });
+                triangleFaces.Add(new Lib3dsFace { index = new[] { face[1], face[3], face[2] } });
+
+                // Split quads into triangles
                 if (face[0] == 4)
                 {
-                    triangles[faceIndex].Add(triangleCount++);
-                    faceVertices.Add(new[] { face[4], face[3], face[1], (short)0 });
+                    equivalentTriangles[i].Add(triangleFaces.Count);
+                    triangleFaces.Add(new Lib3dsFace { index = new[] { face[4], face[3], face[1] } });
                 }
-
-                faceIndex++;
             }
 
-            var facesByObject = new Dictionary<int, List<short[]>>();
+            var facesByObject = new Dictionary<int, List<Lib3dsFace>>();
 
             foreach (var i in objectIndices)
             {
-                var faces = faceVertices;
+                var objectFaces = triangleFaces;
 
                 if (faceGroupIds != null)
                 {
-                    faces = new List<short[]>();
+                    objectFaces = new List<Lib3dsFace>();
 
                     for (short f = 0; f < faceGroupIds.Length; f++)
                         if (faceGroupIds[f] == i)
-                            foreach (var triangleIndex in triangles[f])
-                                faces.Add(faceVertices[triangleIndex]);
+                            foreach (var triangle in equivalentTriangles[f])
+                                objectFaces.Add(triangleFaces[triangle]);
                 }
 
-                facesByObject[i] = faces;
+                facesByObject[i] = objectFaces;
             }
 
             return facesByObject;
