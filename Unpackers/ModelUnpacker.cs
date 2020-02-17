@@ -69,6 +69,8 @@ namespace MediaEngine.Unpackers
 
     class ModelUnpacker : Unpacker<ModelField>
     {
+        public Lib3dsFile Model { get; private set; }
+
         private short[] _faceGroups;
 
         private readonly List<Lib3dsVertex> _vertices = new List<Lib3dsVertex>();
@@ -223,7 +225,11 @@ namespace MediaEngine.Unpackers
 
         protected override bool OnFinish(BinaryReader source, BinaryWriter destination)
         {
-            ModelExporter.Export(_groups, _vertices, _faces, _faceGroups, destination);
+            Model = ModelExporter.Export(_groups, _vertices, _faces, _faceGroups);
+
+            if (!LIB3DS.lib3ds_file_save(Model, destination.BaseStream))
+                throw new Exception("Saving 3ds file failed");
+            
             return true;
         }
     }

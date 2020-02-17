@@ -1,4 +1,5 @@
-﻿using System;
+﻿using lib3ds.Net;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -31,12 +32,14 @@ namespace MediaEngine.Unpackers
 
     class TrackUnpacker : Unpacker<TrackField>
     {
+        private readonly Dictionary<int, Lib3dsFile> _models;
         private readonly string _path;
         private int _depth;
 
-        public TrackUnpacker(string path)
+        public TrackUnpacker(string path, Dictionary<int, Lib3dsFile> models)
         {
             _path = path;
+            _models = models;
         }
 
         protected override void Unpack(BinaryReader source, BinaryWriter destination, TrackField field)

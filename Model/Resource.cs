@@ -12,6 +12,9 @@ namespace MediaEngine.Unpackers
         public string Source { get; }
         public byte[] Unknown2 { get; }
 
+        internal Unpacker Unpacker { get; set; }
+        internal string Path { get; set; }
+
         public Resource(BinaryReader source)
         {
             ResourceType = (ResourceType)source.ReadByte();
@@ -60,7 +63,7 @@ namespace MediaEngine.Unpackers
                 Source = "Untitled.txt";
 
             if (ResourceType == ResourceType.Model)
-                Source = Path.ChangeExtension(Source, "3ds");
+                Source = System.IO.Path.ChangeExtension(Source, "3ds");
 
             Offset = source.BaseStream.Position;
         }

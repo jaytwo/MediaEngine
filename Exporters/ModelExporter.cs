@@ -1,8 +1,6 @@
 ﻿using lib3ds.Net;
 using MediaEngine.Unpackers;
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 
@@ -13,7 +11,7 @@ namespace MediaEngine.Exporters
     /// </summary>
     static class ModelExporter
     {
-        public static void Export(List<Group> groups, List<Lib3dsVertex> vertices, List<ushort[]> allFaces, short[] faceGroupIds, BinaryWriter destination)
+        public static Lib3dsFile Export(List<Group> groups, List<Lib3dsVertex> vertices, List<ushort[]> allFaces, short[] faceGroupIds)
         {
             var file = LIB3DS.lib3ds_file_new();
             var textureGroups = new Dictionary<int, List<Group>>();
@@ -108,8 +106,7 @@ namespace MediaEngine.Exporters
                 }
             }
 
-            if (!LIB3DS.lib3ds_file_save(file, destination.BaseStream))
-                throw new Exception("Saving 3ds file failed");
+            return file;
         }
     }
 }

@@ -1,5 +1,8 @@
-﻿using System;
+﻿using lib3ds.Net;
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace MediaEngine.Unpackers
@@ -12,6 +15,14 @@ namespace MediaEngine.Unpackers
 
     class ScoreUnpacker : Unpacker<ScoreField>
     {
+        private Dictionary<int, Lib3dsFile> _models;
+
+        public ScoreUnpacker(IEnumerable<Resource> resources)
+        {
+            _models = resources.Where(r => r.ResourceType == ResourceType.Model)
+                .ToDictionary(r => r.Index, r => ((ModelUnpacker)r.Unpacker).Model);
+        }
+
         protected override void Unpack(BinaryReader source, BinaryWriter destination, ScoreField field)
         {
             string value = null;
@@ -29,7 +40,7 @@ namespace MediaEngine.Unpackers
                     Directory.CreateDirectory(path);
 
                     using (var writer = new BinaryWriter(File.Create(Path.Combine(path, "0-Score.txt"))))
-                        new TrackUnpacker(path).Unpack(source, writer);
+                        new TrackUnpacker(path, _models).Unpack(source, writer);
                     break;
 
                 default:

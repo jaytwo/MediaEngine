@@ -20,16 +20,9 @@ namespace MediaEngine.Exporters
 
 				group = group.TextureGroup[0];
 
-				var colour = (float[])group[ModelField.MaterialAmbient];
-				material.transparency = (1.0f - colour[3]) * 100;
-
-				material.ambient[0] = colour[0];
-				material.ambient[1] = colour[1];
-				material.ambient[2] = colour[2];
-
-				material.diffuse[0] = colour[0];
-				material.diffuse[1] = colour[1];
-				material.diffuse[2] = colour[2];
+				material.ambient = (float[])group[ModelField.MaterialAmbient];
+				material.diffuse = (float[])group[ModelField.MaterialAmbient];
+				material.transparency = 1.0f - material.ambient[3];
 
 				var textureId = (int)group[ModelField.Texture];
 				if (textureId != -1)

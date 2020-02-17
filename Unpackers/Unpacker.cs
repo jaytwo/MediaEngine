@@ -4,7 +4,12 @@ using System.IO;
 
 namespace MediaEngine.Unpackers
 {
-    abstract class Unpacker<T> where T : Enum
+    abstract class Unpacker
+    {
+        public abstract void Unpack(BinaryReader source, BinaryWriter destination);
+    }
+
+    abstract class Unpacker<T> : Unpacker where T : Enum
     {
         protected readonly Dictionary<T, int> _fieldValues = new Dictionary<T, int>();
 
@@ -16,7 +21,7 @@ namespace MediaEngine.Unpackers
 
         protected virtual byte EndByte => 255;
 
-        public void Unpack(BinaryReader source, BinaryWriter destination)
+        public override void Unpack(BinaryReader source, BinaryWriter destination)
         {
             _fieldValues.Clear();
             OnStart(ref source, destination);
